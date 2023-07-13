@@ -2,11 +2,12 @@ package drabber
 
 import (
 	"encoding/csv"
+	"os"
 	"time"
 )
 
 type DataGrabber struct {
-	Fetcher *Fetcher
+	Fetcher Fetcher
 }
 
 type MarketType string
@@ -27,6 +28,21 @@ type Fetcher interface {
 	Fetch(target GrabTarget, w csv.Writer) error
 }
 
-func NewDrabber(fetcher *Fetcher) *DataGrabber {
+func NewDataGrabber(fetcher Fetcher) *DataGrabber {
 	return &DataGrabber{Fetcher: fetcher}
+}
+
+func (d DataGrabber) Grab(target GrabTarget, dst string) error {
+	f, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+
+	ws := csv.NewWriter(f)
+	err = d.Fetcher.Fetch(target, *ws)
+	if err != nil {
+		return err
+	}
+	ws.Flush()
+	return nil
 }

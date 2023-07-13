@@ -29,6 +29,11 @@ func (p Polygon) Fetch(target GrabTarget, w csv.Writer) error {
 		ticker = "X:" + ticker
 	}
 
+	err := w.Write([]string{"timestamp", "open", "high", "low", "close", "volume", "vwap"})
+	if err != nil {
+		return err
+	}
+
 	params := models.ListAggsParams{
 		Ticker:     ticker,
 		Multiplier: 1,
@@ -56,7 +61,7 @@ func (p Polygon) Fetch(target GrabTarget, w csv.Writer) error {
 		}
 
 	}
-	err := iter.Err()
+	err = iter.Err()
 	if err != nil {
 		return err
 	}
