@@ -2,6 +2,7 @@ package splicer
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/hubertkaluzny/silly-trader/record"
@@ -38,6 +39,7 @@ func ToNormalisationType(input string) (NormalisationType, error) {
 type SpliceOptions struct {
 	Period            int               `json:"period"`
 	ResultN           int               `json:"result_n"`
+	SkipN             int               `json:"skip_n"`
 	NormalisationType NormalisationType `json:"normalisation_type"`
 }
 
@@ -167,16 +169,18 @@ func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
 		data = normaliseToZScore(data)
 	}
 
-	// can pre-allocate this if we're not too lazy
-	// to do the maths
 	var splices []Splice
-	for i, _ := range data[period : len(data)-resultN] {
+	for i := 0; i+period+resultN-1 < len(data); i += 1 + opts.SkipN {
+		fmt.Printf("i: %d, period: %d, skip: %d, result: %d\n", i, period, opts.SkipN, opts.ResultN)
 		spliceData := data[i:(i + period)]
+
 		startTime := spliceData[0].Timestamp
 		endTime := spliceData[period-1].Timestamp
 
 		priceAtClose := spliceData[period-1].Close
-		priceAtResult := data[i+period+resultN].Open
+
+		priceAtResult := data[i+period+resultN-1].Open
+
 		result := priceAtResult - priceAtClose
 
 		splices = append(splices, Splice{
