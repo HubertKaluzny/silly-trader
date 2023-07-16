@@ -27,10 +27,10 @@ func main() {
 		printUsageAndExit()
 	}
 
-	polygonFetcher := fetcher.NewPolygonFetcher(polygonKey)
-	grabber := fetcher.NewDataGrabber(polygonFetcher)
+	polygonSource := fetcher.NewPolygonSource(polygonKey)
+	f := fetcher.NewFetcher(polygonSource)
 
-	target := fetcher.GrabTarget{}
+	target := fetcher.FetchTarget{}
 	if args[1] == "stock" {
 		target.MarketType = fetcher.Stock
 	} else if args[1] == "crypto" {
@@ -56,7 +56,7 @@ func main() {
 	}
 	target.To = toDate
 
-	err = grabber.Grab(target, args[5])
+	err = f.Fetch(target, args[5])
 
 	if err != nil {
 		fmt.Println(err)

@@ -32,7 +32,7 @@ func NewFetcher(source Source) *Fetcher {
 	return &Fetcher{Source: source}
 }
 
-func (f Fetcher) fetch(target FetchTarget, dst string) error {
+func (f Fetcher) Fetch(target FetchTarget, dst string) error {
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err

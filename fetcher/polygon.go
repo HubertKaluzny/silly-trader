@@ -17,7 +17,7 @@ type Polygon struct {
 
 var _ Source = (*Polygon)(nil)
 
-func NewPolygonFetcher(apiKey string) *Polygon {
+func NewPolygonSource(apiKey string) *Polygon {
 	c := pio.New(apiKey)
 
 	return &Polygon{c}
