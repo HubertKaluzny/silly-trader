@@ -25,22 +25,22 @@ func CompressionHeatMap(model *strategy.CompressionModel, downSampleBy int) (*ch
 
 	for i := 0; i < mapLength; i++ {
 		for j := 0; j < mapLength; j++ {
-			maxLocalValue := math.SmallestNonzeroFloat32
+			minLocalValue := math.SmallestNonzeroFloat32
 
 			// local loop
 			for x := 0; x < downSampleBy; x++ {
 				for y := 0; y < downSampleBy; y++ {
 					ix := (downSampleBy * i) + x
 					jy := (downSampleBy * j) + y
-					maxLocalValue = math.Max(maxLocalValue, similarityMap[ix][jy])
+					minLocalValue = math.Min(minLocalValue, similarityMap[ix][jy])
 				}
 			}
-			hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, maxLocalValue}}
+			hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, minLocalValue}}
 			inserted += 1
-			if maxLocalValue > max {
-				max = maxLocalValue
-			} else if maxLocalValue < min {
-				min = maxLocalValue
+			if minLocalValue > max {
+				max = minLocalValue
+			} else if minLocalValue < min {
+				min = minLocalValue
 			}
 		}
 	}
