@@ -78,33 +78,68 @@ func main() {
 			},
 			{
 				Name: "eval",
-				Action: func(ctx *cli.Context) error {
-					modelFilePath := ctx.Args().Get(0)
-					outputFilePath := ctx.Args().Get(1)
+				Subcommands: []*cli.Command{
+					{
+						Name: "heatmap",
+						Action: func(ctx *cli.Context) error {
+							modelFilePath := ctx.Args().Get(0)
+							outputFilePath := ctx.Args().Get(1)
 
-					model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
-					if err != nil {
-						return err
-					}
-					fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+							model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+							if err != nil {
+								return err
+							}
+							fmt.Printf("Loaded model with %d records.\n", len(model.Items))
 
-					hmap, err := eval.CompressionHeatMap(model)
-					if err != nil {
-						return err
-					}
+							hmap, err := eval.CompressionHeatMap(model)
+							if err != nil {
+								return err
+							}
 
-					fmt.Println("Heatmap generated, rendering output.")
-					outputFile, err := os.Create(outputFilePath)
-					if err != nil {
-						return err
-					}
+							fmt.Println("Heatmap generated, rendering output.")
+							outputFile, err := os.Create(outputFilePath)
+							if err != nil {
+								return err
+							}
 
-					err = hmap.Render(outputFile)
-					if err != nil {
-						return err
-					}
+							err = hmap.Render(outputFile)
+							if err != nil {
+								return err
+							}
 
-					return outputFile.Close()
+							return outputFile.Close()
+						},
+					},
+					{
+						Name: "histogram",
+						Action: func(ctx *cli.Context) error {
+							modelFilePath := ctx.Args().Get(0)
+							outputFilePath := ctx.Args().Get(1)
+
+							model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+							if err != nil {
+								return err
+							}
+							fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+							histogram, err := eval.CompressionSizeHistogram(model)
+							if err != nil {
+								return err
+							}
+
+							fmt.Println("Histogram generated, rendering output.")
+							outputFile, err := os.Create(outputFilePath)
+							if err != nil {
+								return err
+							}
+
+							err = histogram.Render(outputFile)
+							if err != nil {
+								return err
+							}
+
+							return outputFile.Close()
+						},
+					},
 				},
 			},
 		},

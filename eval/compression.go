@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/hubertkaluzny/silly-trader/strategy"
 
@@ -57,4 +58,34 @@ func CompressionHeatMap(model *strategy.CompressionModel) (*charts.HeatMap, erro
 	}))
 
 	return hmap, nil
+}
+
+func CompressionSizeHistogram(model *strategy.CompressionModel) (*charts.Bar, error) {
+	bar := charts.NewBar()
+
+	buckets := model.SizeResultBuckets()
+
+	sizes := make([]int, len(buckets))
+	i := 0
+	for size := range buckets {
+		sizes[i] = size
+		i++
+	}
+	sort.Ints(sizes)
+
+	barData := make([]opts.BarData, len(sizes))
+	for i, bucket := range sizes {
+		count := len(buckets[bucket])
+		barData[i] = opts.BarData{Value: count}
+	}
+
+	bar.SetXAxis(sizes).AddSeries("Frequency", barData)
+
+	bar.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title: "Compression Model Size Histogram",
+		}),
+	)
+
+	return bar, nil
 }
