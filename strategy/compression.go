@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
@@ -112,8 +113,11 @@ func (model *CompressionModel) SimilarityMap() ([][]float64, error) {
 	for i := range model.Items {
 		res[i] = make([]float64, len(model.Items))
 	}
+	var wg sync.WaitGroup
 	for i, itemI := range model.Items {
+		wg.Add(1)
 		go func(i int, itemI CompressionItem) {
+			defer wg.Done()
 			for j, itemJ := range model.Items[i:] {
 				canonicalJ := j + i
 				distance, err := DistanceBetween(itemI, itemJ)
@@ -125,6 +129,7 @@ func (model *CompressionModel) SimilarityMap() ([][]float64, error) {
 			}
 		}(i, itemI)
 	}
+	wg.Wait()
 	return res, nil
 }
 

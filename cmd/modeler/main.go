@@ -18,6 +18,7 @@ func main() {
 
 	const PeriodFlag = "period"
 	const ResultNFlag = "resultn"
+	const NormalisationFlag = "normalisation"
 
 	app := &cli.App{
 		Name: "modeler",
@@ -33,8 +34,17 @@ func main() {
 						Name:  ResultNFlag,
 						Value: 24,
 					},
+					&cli.StringFlag{
+						Name:  NormalisationFlag,
+						Value: string(splicer.ZScore),
+					},
 				},
 				Action: func(ctx *cli.Context) error {
+					normalisationType, err := splicer.ToNormalisationType(ctx.String(NormalisationFlag))
+					if err != nil {
+						return err
+					}
+
 					ctx.Int(PeriodFlag)
 					dataFilePath := ctx.Args().Get(0)
 
@@ -60,8 +70,9 @@ func main() {
 					}
 					fmt.Printf("Parsed %d records.\n", len(parsedRecs))
 					opts := splicer.SpliceOptions{
-						Period:  ctx.Int(PeriodFlag),
-						ResultN: ctx.Int(ResultNFlag),
+						Period:            ctx.Int(PeriodFlag),
+						ResultN:           ctx.Int(ResultNFlag),
+						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
 					model := strategy.NewCompressionModel(opts)
