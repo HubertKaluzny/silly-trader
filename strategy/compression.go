@@ -3,25 +3,48 @@ package strategy
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"os"
 	"strings"
 
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
 )
 
-type CompressedItem struct {
-	splicer.Splice
-	CompressedData []byte `json:"compressed_data"`
+type CompressionItem struct {
+	Splice         splicer.Splice `json:"splice"`
+	CompressedSize int            `json:"compressed_length"`
 }
 
 type CompressionModel struct {
-	SpliceOptions splicer.SpliceOptions
-	Items         []CompressedItem `json:"items"`
+	SpliceOptions splicer.SpliceOptions `json:"splice_options"`
+	Items         []CompressionItem     `json:"items"`
 }
 
 func NewCompressionModel(spliceOpts splicer.SpliceOptions) *CompressionModel {
 	return &CompressionModel{SpliceOptions: splicer.SpliceOptions{}}
+}
+
+func LoadCompressionModelFromFile(file string) (*CompressionModel, error) {
+	modelFile, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer modelFile.Close()
+	reader, err := gzip.NewReader(modelFile)
+	if err != nil {
+		return nil, err
+	}
+	var model *CompressionModel
+	decoder := json.NewDecoder(reader)
+	err = decoder.Decode(model)
+	if err != nil {
+		return nil, err
+	}
+	return model, nil
 }
 
 func (model *CompressionModel) AddMarketData(data []record.Market) error {
@@ -29,7 +52,7 @@ func (model *CompressionModel) AddMarketData(data []record.Market) error {
 	if err != nil {
 		return err
 	}
-	newItems := make([]CompressedItem, len(splices))
+	newItems := make([]CompressionItem, len(splices))
 	for i, s := range splices {
 		item, err := CompressSplice(s)
 		if err != nil {
@@ -39,6 +62,50 @@ func (model *CompressionModel) AddMarketData(data []record.Market) error {
 	}
 	model.Items = append(model.Items, newItems...)
 	return nil
+}
+
+func (model *CompressionModel) PredictResult(observation []record.Market) (*CompressionItem, error) {
+	compressedObservation, err := CompressMarketData(observation)
+	if err != nil {
+		return nil, err
+	}
+	Cx1 := float64(len(compressedObservation))
+	bestDist := math.MaxFloat32
+	bestCandidate := -1
+	for i, item := range model.Items {
+		concatted := append(item.Splice.Data, observation...)
+		compressedConcatted, err := CompressMarketData(concatted)
+		if err != nil {
+			return nil, err
+		}
+		Cx1x2 := float64(len(compressedConcatted))
+		Cx2 := float64(item.CompressedSize)
+		distance := (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2)
+		if distance < bestDist {
+			bestDist = distance
+			bestCandidate = i
+		}
+	}
+	if bestCandidate == -1 {
+		return nil, errors.New("no candidates found")
+	}
+	return &model.Items[bestCandidate], nil
+}
+
+func (model *CompressionModel) SaveToFile(file string) error {
+	modelFile, err := os.Open(file)
+	defer modelFile.Close()
+	if err != nil {
+		return err
+	}
+	gzipWriter := gzip.NewWriter(modelFile)
+	encoder := json.NewEncoder(gzipWriter)
+	err = encoder.Encode(model)
+	if err != nil {
+		return err
+	}
+	err = gzipWriter.Flush()
+	return err
 }
 
 func CompressMarketData(data []record.Market) ([]byte, error) {
@@ -63,13 +130,13 @@ func CompressMarketData(data []record.Market) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-func CompressSplice(s splicer.Splice) (*CompressedItem, error) {
+func CompressSplice(s splicer.Splice) (*CompressionItem, error) {
 	compressed, err := CompressMarketData(s.Data)
 	if err != nil {
 		return nil, err
 	}
-	return &CompressedItem{
+	return &CompressionItem{
 		Splice:         s,
-		CompressedData: compressed,
+		CompressedSize: len(compressed),
 	}, nil
 }
