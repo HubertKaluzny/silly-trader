@@ -32,7 +32,10 @@ func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
 		spliceData := data[i:(i + period)]
 		startTime := spliceData[0].Timestamp
 		endTime := spliceData[period-1].Timestamp
-		result := data[i+period+resultN].Close
+
+		priceAtClose := spliceData[period-1].Close
+		priceAtResult := data[i+period+resultN].Open
+		result := priceAtResult - priceAtClose
 
 		splices = append(splices, Splice{
 			Data:      spliceData,

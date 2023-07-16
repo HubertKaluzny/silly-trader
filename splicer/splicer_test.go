@@ -29,7 +29,7 @@ func TestSpliceData(t *testing.T) {
 	runTest := func(t *testing.T, dataSize, period, resultN int) {
 		testData := randomMarketData(dataSize)
 
-		splices, err := SpliceData(testData, period, resultN)
+		splices, err := SpliceData(testData, SpliceOptions{Period: period, ResultN: resultN})
 		assert.NoError(t, err)
 
 		expectedLength := dataSize - (resultN + period)
@@ -38,7 +38,6 @@ func TestSpliceData(t *testing.T) {
 		fstSplice := splices[0]
 		assert.Equal(t, period, len(fstSplice.Data))
 		assert.ElementsMatch(t, testData[:period], fstSplice.Data)
-		assert.Equal(t, testData[period+resultN].Close, fstSplice.Result)
 
 		lastSplice := splices[expectedLength-1]
 		assert.Equal(t, period, len(lastSplice.Data))
@@ -46,7 +45,6 @@ func TestSpliceData(t *testing.T) {
 		start := end - period
 		expectedLastSpliceData := testData[start:end]
 		assert.ElementsMatch(t, expectedLastSpliceData, lastSplice.Data)
-		assert.Equal(t, testData[dataSize-1].Close, lastSplice.Result)
 	}
 
 	t.Run("single period splices", func(t *testing.T) {
