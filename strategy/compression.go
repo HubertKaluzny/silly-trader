@@ -25,7 +25,7 @@ type CompressionModel struct {
 }
 
 func NewCompressionModel(spliceOpts splicer.SpliceOptions) *CompressionModel {
-	return &CompressionModel{SpliceOptions: splicer.SpliceOptions{}}
+	return &CompressionModel{SpliceOptions: spliceOpts}
 }
 
 func LoadCompressionModelFromFile(file string) (*CompressionModel, error) {
@@ -92,14 +92,57 @@ func (model *CompressionModel) PredictResult(observation []record.Market) (*Comp
 	return &model.Items[bestCandidate], nil
 }
 
+func DistanceBetween(x1 CompressionItem, x2 CompressionItem) (float64, error) {
+	Cx1 := float64(x1.CompressedSize)
+	Cx2 := float64(x2.CompressedSize)
+
+	concatted := append(x1.Splice.Data, x2.Splice.Data...)
+	compressedConcatted, err := CompressMarketData(concatted)
+	if err != nil {
+		return math.MaxFloat64, err
+	}
+
+	Cx1x2 := float64(len(compressedConcatted))
+
+	return (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2), nil
+}
+
+func (model *CompressionModel) SimilarityMap() ([][]float64, error) {
+	res := make([][]float64, len(model.Items))
+	for i := range model.Items {
+		res[i] = make([]float64, len(model.Items))
+	}
+	for i, itemI := range model.Items {
+		for j, itemJ := range model.Items[i:] {
+			canonicalJ := j + i
+			distance, err := DistanceBetween(itemI, itemJ)
+			if err != nil {
+				return nil, err
+			}
+			res[i][canonicalJ] = distance
+			res[canonicalJ][i] = distance
+		}
+	}
+	return res, nil
+}
+
+func (model *CompressionModel) SizeResultBuckets() map[int][]float64 {
+	buckets := make(map[int][]float64)
+	for _, item := range model.Items {
+		bucket := item.CompressedSize
+		buckets[bucket] = append(buckets[bucket], item.Splice.Result)
+	}
+	return buckets
+}
+
 func (model *CompressionModel) SaveToFile(file string) error {
-	modelFile, err := os.Open(file)
+	modelFile, err := os.Create(file)
 	defer modelFile.Close()
 	if err != nil {
 		return err
 	}
 	gzipWriter := gzip.NewWriter(modelFile)
-	encoder := json.NewEncoder(gzipWriter)
+	encoder := json.NewEncoder(modelFile)
 	err = encoder.Encode(model)
 	if err != nil {
 		return err
@@ -124,6 +167,10 @@ func CompressMarketData(data []record.Market) ([]byte, error) {
 	buff := bytes.NewBuffer(buffBytes)
 	writer := gzip.NewWriter(buff)
 	_, err := writer.Write([]byte(b.String()))
+	if err != nil {
+		return nil, err
+	}
+	err = writer.Flush()
 	if err != nil {
 		return nil, err
 	}
