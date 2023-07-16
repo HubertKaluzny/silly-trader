@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hubertkaluzny/silly-trader/drabber"
+	"github.com/hubertkaluzny/silly-trader/fetcher"
 )
 
 func main() {
@@ -27,14 +27,14 @@ func main() {
 		printUsageAndExit()
 	}
 
-	polygonFetcher := drabber.NewPolygonFetcher(polygonKey)
-	grabber := drabber.NewDataGrabber(polygonFetcher)
+	polygonFetcher := fetcher.NewPolygonFetcher(polygonKey)
+	grabber := fetcher.NewDataGrabber(polygonFetcher)
 
-	target := drabber.GrabTarget{}
+	target := fetcher.GrabTarget{}
 	if args[1] == "stock" {
-		target.MarketType = drabber.Stock
+		target.MarketType = fetcher.Stock
 	} else if args[1] == "crypto" {
-		target.MarketType = drabber.Crypto
+		target.MarketType = fetcher.Crypto
 	} else {
 		printUsageAndExit()
 	}

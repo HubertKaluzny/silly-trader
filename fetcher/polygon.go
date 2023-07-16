@@ -1,4 +1,4 @@
-package drabber
+package fetcher
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type Polygon struct {
 	client *pio.Client
 }
 
-var _ Fetcher = (*Polygon)(nil)
+var _ Source = (*Polygon)(nil)
 
 func NewPolygonFetcher(apiKey string) *Polygon {
 	c := pio.New(apiKey)
@@ -23,7 +23,7 @@ func NewPolygonFetcher(apiKey string) *Polygon {
 	return &Polygon{c}
 }
 
-func (p Polygon) Fetch(target GrabTarget, w csv.Writer) error {
+func (p Polygon) Fetch(target FetchTarget, w csv.Writer) error {
 	ticker := target.Ticker
 	if target.MarketType == Crypto {
 		ticker = "X:" + ticker
