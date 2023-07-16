@@ -38,13 +38,13 @@ func LoadCompressionModelFromFile(file string) (*CompressionModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	var model *CompressionModel
+	var model CompressionModel
 	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(model)
+	err = decoder.Decode(&model)
 	if err != nil {
 		return nil, err
 	}
-	return model, nil
+	return &model, nil
 }
 
 func (model *CompressionModel) AddMarketData(data []record.Market) error {
@@ -113,15 +113,17 @@ func (model *CompressionModel) SimilarityMap() ([][]float64, error) {
 		res[i] = make([]float64, len(model.Items))
 	}
 	for i, itemI := range model.Items {
-		for j, itemJ := range model.Items[i:] {
-			canonicalJ := j + i
-			distance, err := DistanceBetween(itemI, itemJ)
-			if err != nil {
-				return nil, err
+		go func(i int, itemI CompressionItem) {
+			for j, itemJ := range model.Items[i:] {
+				canonicalJ := j + i
+				distance, err := DistanceBetween(itemI, itemJ)
+				if err != nil {
+					panic(err)
+				}
+				res[i][canonicalJ] = distance
+				res[canonicalJ][i] = distance
 			}
-			res[i][canonicalJ] = distance
-			res[canonicalJ][i] = distance
-		}
+		}(i, itemI)
 	}
 	return res, nil
 }
@@ -142,7 +144,7 @@ func (model *CompressionModel) SaveToFile(file string) error {
 		return err
 	}
 	gzipWriter := gzip.NewWriter(modelFile)
-	encoder := json.NewEncoder(modelFile)
+	encoder := json.NewEncoder(gzipWriter)
 	err = encoder.Encode(model)
 	if err != nil {
 		return err
