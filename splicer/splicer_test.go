@@ -25,13 +25,11 @@ func randomMarketData(length int) []record.Market {
 	return res
 }
 
-func TestSplicer_Splice(t *testing.T) {
-
+func TestSpliceData(t *testing.T) {
 	runTest := func(t *testing.T, dataSize, period, resultN int) {
 		testData := randomMarketData(dataSize)
-		splicer := NewSplicer(period, resultN)
 
-		splices, err := splicer.Splice(testData)
+		splices, err := SpliceData(testData, period, resultN)
 		assert.NoError(t, err)
 
 		expectedLength := dataSize - (resultN + period)

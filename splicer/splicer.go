@@ -13,31 +13,19 @@ type Splice struct {
 	Result    float64
 }
 
-type Splicer struct {
-	Period  int
-	ResultN int
-}
-
-func NewSplicer(period, resultN int) *Splicer {
-	return &Splicer{
-		Period:  period,
-		ResultN: resultN,
-	}
-}
-
-func (s *Splicer) Splice(data []record.Market) ([]Splice, error) {
-	if len(data) < s.Period+s.ResultN {
+func SpliceData(data []record.Market, period, resultN int) ([]Splice, error) {
+	if len(data) < period+resultN {
 		return nil, errors.New("insufficient data length provided for provided params")
 	}
 
 	// can pre-allocate this if we're not too lazy
 	// to do the maths
 	var splices []Splice
-	for i, _ := range data[s.Period : len(data)-s.ResultN] {
-		spliceData := data[i:(i + s.Period)]
+	for i, _ := range data[period : len(data)-resultN] {
+		spliceData := data[i:(i + period)]
 		startTime := spliceData[0].Timestamp
-		endTime := spliceData[s.Period-1].Timestamp
-		result := data[i+s.Period+s.ResultN].Close
+		endTime := spliceData[period-1].Timestamp
+		result := data[i+period+resultN].Close
 
 		splices = append(splices, Splice{
 			Data:      spliceData,
