@@ -3,11 +3,12 @@ package drabber
 import (
 	"context"
 	"encoding/csv"
-	"strconv"
 	"time"
 
 	pio "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/models"
+
+	"github.com/hubertkaluzny/silly-trader/record"
 )
 
 type Polygon struct {
@@ -23,7 +24,6 @@ func NewPolygonFetcher(apiKey string) *Polygon {
 }
 
 func (p Polygon) Fetch(target GrabTarget, w csv.Writer) error {
-
 	ticker := target.Ticker
 	if target.MarketType == Crypto {
 		ticker = "X:" + ticker
@@ -43,19 +43,18 @@ func (p Polygon) Fetch(target GrabTarget, w csv.Writer) error {
 	}.WithOrder(models.Desc).WithLimit(50000).WithAdjusted(true)
 
 	iter := p.client.ListAggs(context.TODO(), params)
-
 	for iter.Next() {
 		i := iter.Item()
-		record := []string{
-			strconv.FormatInt(time.Time(i.Timestamp).UnixMilli(), 10),
-			strconv.FormatFloat(i.Open, 'G', -1, 64),
-			strconv.FormatFloat(i.High, 'G', -1, 64),
-			strconv.FormatFloat(i.Low, 'G', -1, 64),
-			strconv.FormatFloat(i.Close, 'G', -1, 64),
-			strconv.FormatFloat(i.Volume, 'G', -1, 64),
-			strconv.FormatFloat(i.VWAP, 'G', -1, 64),
+		rec := record.Market{
+			Timestamp: time.Time(i.Timestamp).UnixMilli(),
+			Open:      i.Open,
+			High:      i.High,
+			Low:       i.Low,
+			Close:     i.Close,
+			Volume:    i.Volume,
+			VWAP:      i.VWAP,
 		}
-		err := w.Write(record)
+		err := w.Write(record.SerializeMarket(rec))
 		if err != nil {
 			return err
 		}
