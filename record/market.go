@@ -6,13 +6,13 @@ import (
 )
 
 type Market struct {
-	Timestamp int64
-	Open      float64
-	High      float64
-	Low       float64
-	Close     float64
-	Volume    float64
-	VWAP      float64
+	Timestamp int64   `json:"timestamp"`
+	Open      float64 `json:"open"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Close     float64 `json:"close"`
+	Volume    float64 `json:"volume"`
+	VWAP      float64 `json:"vwap"`
 }
 
 func SerializeMarket(r Market) []string {

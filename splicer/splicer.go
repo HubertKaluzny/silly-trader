@@ -7,13 +7,20 @@ import (
 )
 
 type Splice struct {
-	Data      []record.Market
-	StartTime int64
-	EndTime   int64
-	Result    float64
+	Data      []record.Market `json:"data"`
+	StartTime int64           `json:"start_time"`
+	EndTime   int64           `json:"end_time"`
+	Result    float64         `json:"result"`
 }
 
-func SpliceData(data []record.Market, period, resultN int) ([]Splice, error) {
+type SpliceOptions struct {
+	Period  int `json:"period"`
+	ResultN int `json:"result_n"`
+}
+
+func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
+	period := opts.Period
+	resultN := opts.ResultN
 	if len(data) < period+resultN {
 		return nil, errors.New("insufficient data length provided for provided params")
 	}
