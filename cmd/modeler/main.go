@@ -8,6 +8,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/hubertkaluzny/silly-trader/eval"
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
 	"github.com/hubertkaluzny/silly-trader/strategy"
@@ -78,7 +79,32 @@ func main() {
 			{
 				Name: "eval",
 				Action: func(ctx *cli.Context) error {
-					return nil
+					modelFilePath := ctx.Args().Get(0)
+					outputFilePath := ctx.Args().Get(1)
+
+					model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+
+					hmap, err := eval.CompressionHeatMap(model)
+					if err != nil {
+						return err
+					}
+
+					fmt.Println("Heatmap generated, rendering output.")
+					outputFile, err := os.Create(outputFilePath)
+					if err != nil {
+						return err
+					}
+
+					err = hmap.Render(outputFile)
+					if err != nil {
+						return err
+					}
+
+					return outputFile.Close()
 				},
 			},
 		},
