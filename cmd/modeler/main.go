@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/urfave/cli/v2"
 
 	"github.com/hubertkaluzny/silly-trader/eval"
@@ -19,6 +20,7 @@ func main() {
 	const PeriodFlag = "period"
 	const ResultNFlag = "resultn"
 	const NormalisationFlag = "normalisation"
+	const DownsampleFlag = "downsample"
 
 	app := &cli.App{
 		Name: "modeler",
@@ -92,9 +94,16 @@ func main() {
 				Subcommands: []*cli.Command{
 					{
 						Name: "heatmap",
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  DownsampleFlag,
+								Value: 2,
+							},
+						},
 						Action: func(ctx *cli.Context) error {
 							modelFilePath := ctx.Args().Get(0)
 							outputFilePath := ctx.Args().Get(1)
+							downsampleBy := ctx.Int(DownsampleFlag)
 
 							model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
 							if err != nil {
@@ -102,7 +111,7 @@ func main() {
 							}
 							fmt.Printf("Loaded model with %d records.\n", len(model.Items))
 
-							hmap, err := eval.CompressionHeatMap(model)
+							hmap, err := eval.CompressionHeatMap(model, downsampleBy)
 							if err != nil {
 								return err
 							}
@@ -113,7 +122,11 @@ func main() {
 								return err
 							}
 
-							err = hmap.Render(outputFile)
+							page := components.NewPage()
+							page.SetLayout(components.PageCenterLayout)
+							page.AddCharts(hmap)
+
+							err = page.Render(outputFile)
 							if err != nil {
 								return err
 							}

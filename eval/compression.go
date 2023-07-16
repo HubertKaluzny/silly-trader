@@ -1,7 +1,6 @@
 package eval
 
 import (
-	"fmt"
 	"math"
 	"sort"
 
@@ -11,36 +10,59 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-func CompressionHeatMap(model *strategy.CompressionModel) (*charts.HeatMap, error) {
+func CompressionHeatMap(model *strategy.CompressionModel, downSampleBy int) (*charts.HeatMap, error) {
 	hmap := charts.NewHeatMap()
 
 	similarityMap, err := model.SimilarityMap()
 	if err != nil {
 		return nil, err
 	}
-	hmData := make([]opts.HeatMapData, len(similarityMap)*len(similarityMap))
+	mapLength := len(similarityMap) / downSampleBy
+	hmData := make([]opts.HeatMapData, mapLength*mapLength)
 	inserted := 0
 	min := math.MaxFloat64
 	max := math.SmallestNonzeroFloat64
-	for i, js := range similarityMap {
-		for j, val := range js {
-			hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, val}}
-			fmt.Print(val)
-			fmt.Print(",")
+
+	for i := 0; i < mapLength; i++ {
+		for j := 0; j < mapLength; j++ {
+			maxLocalValue := math.SmallestNonzeroFloat32
+
+			// local loop
+			for x := 0; x < downSampleBy; x++ {
+				for y := 0; y < downSampleBy; y++ {
+					ix := (downSampleBy * i) + x
+					jy := (downSampleBy * j) + y
+					maxLocalValue = math.Max(maxLocalValue, similarityMap[ix][jy])
+				}
+			}
+			hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, maxLocalValue}}
 			inserted += 1
-			if val > max {
-				max = val
-			} else if val < min {
-				min = val
+			if maxLocalValue > max {
+				max = maxLocalValue
+			} else if maxLocalValue < min {
+				min = maxLocalValue
 			}
 		}
 	}
 
-	fmt.Printf("min: %f, max: %f\n", math.Floor(min), math.Ceil(max))
-
 	hmap.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
-			Title: "Compression Model Similarity Heatmap",
+			Title: "Compression Model Distance Heatmap",
+		}),
+		charts.WithDataZoomOpts(opts.DataZoom{
+			XAxisIndex: 0,
+		}),
+		charts.WithDataZoomOpts(opts.DataZoom{
+			YAxisIndex: 0,
+		}),
+		charts.WithXAxisOpts(opts.XAxis{
+			Type: "value",
+		}),
+		charts.WithYAxisOpts(opts.YAxis{
+			Type: "value",
+		}),
+		charts.WithTooltipOpts(opts.Tooltip{
+			Show: true,
 		}),
 		charts.WithVisualMapOpts(opts.VisualMap{
 			Calculable: true,
@@ -52,10 +74,7 @@ func CompressionHeatMap(model *strategy.CompressionModel) (*charts.HeatMap, erro
 		}),
 	)
 
-	hmap.AddSeries("Similarity", hmData, charts.WithHeatMapChartOpts(opts.HeatMapChart{
-		XAxisIndex: 0,
-		YAxisIndex: 0,
-	}))
+	hmap.AddSeries("Distance", hmData)
 
 	return hmap, nil
 }
