@@ -1,4 +1,4 @@
-package strategy
+package model
 
 import (
 	"bytes"
@@ -14,6 +14,11 @@ import (
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
 )
+
+type PredictionResult struct {
+	Distance float64
+	Item     CompressionItem
+}
 
 type CompressionEncodingType string
 
@@ -86,15 +91,16 @@ func (model *CompressionModel) AddMarketData(data []record.Market) error {
 	return nil
 }
 
-func (model *CompressionModel) PredictResult(observation []record.Market) (*CompressionItem, error) {
+// PredictResult expects data to come pre-normalised
+func (model *CompressionModel) PredictResult(observation []record.Market, closestN int) ([]*PredictionResult, error) {
 	compressedObservation, err := CompressMarketData(observation, model.EncodingType)
 	if err != nil {
 		return nil, err
 	}
 	Cx1 := float64(len(compressedObservation))
-	bestDist := math.MaxFloat32
-	bestCandidate := -1
-	for i, item := range model.Items {
+	results := make([]*PredictionResult, closestN)
+	for _, item := range model.Items {
+		item := item
 		concatted := append(item.Splice.Data, observation...)
 		compressedConcatted, err := CompressMarketData(concatted, model.EncodingType)
 		if err != nil {
@@ -103,15 +109,27 @@ func (model *CompressionModel) PredictResult(observation []record.Market) (*Comp
 		Cx1x2 := float64(len(compressedConcatted))
 		Cx2 := float64(item.CompressedSize)
 		distance := (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2)
-		if distance < bestDist {
-			bestDist = distance
-			bestCandidate = i
+
+		insertIndex := -1
+		for i, res := range results {
+			i := i
+			if res == nil {
+				insertIndex = i
+				break
+			}
+			if res.Distance > distance {
+				insertIndex = i
+				break
+			}
+		}
+		if insertIndex != -1 {
+			results[insertIndex] = &PredictionResult{
+				Distance: distance,
+				Item:     item,
+			}
 		}
 	}
-	if bestCandidate == -1 {
-		return nil, errors.New("no candidates found")
-	}
-	return &model.Items[bestCandidate], nil
+	return results, nil
 }
 
 func DistanceBetween(x1 CompressionItem, x2 CompressionItem, encodingType CompressionEncodingType) (float64, error) {
