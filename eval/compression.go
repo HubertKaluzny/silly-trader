@@ -25,7 +25,7 @@ func CompressionHeatMap(model *strategy.CompressionModel, downSampleBy int) (*ch
 
 	for i := 0; i < mapLength; i++ {
 		for j := 0; j < mapLength; j++ {
-			minLocalValue := math.SmallestNonzeroFloat32
+			minLocalValue := math.MaxFloat64
 
 			// local loop
 			for x := 0; x < downSampleBy; x++ {
