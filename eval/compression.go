@@ -4,13 +4,13 @@ import (
 	"math"
 	"sort"
 
-	"github.com/hubertkaluzny/silly-trader/strategy"
+	"github.com/hubertkaluzny/silly-trader/model"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-func CompressionHeatMap(model *strategy.CompressionModel, downSampleBy int) (*charts.HeatMap, error) {
+func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*charts.HeatMap, error) {
 	hmap := charts.NewHeatMap()
 
 	similarityMap, err := model.SimilarityMap()
@@ -79,7 +79,7 @@ func CompressionHeatMap(model *strategy.CompressionModel, downSampleBy int) (*ch
 	return hmap, nil
 }
 
-func CompressionSizeHistogram(model *strategy.CompressionModel) (*charts.Bar, error) {
+func CompressionSizeHistogram(model *model.CompressionModel) (*charts.Bar, error) {
 	bar := charts.NewBar()
 
 	buckets := model.SizeResultBuckets()

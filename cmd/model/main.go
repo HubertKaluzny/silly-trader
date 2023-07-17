@@ -10,9 +10,9 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/hubertkaluzny/silly-trader/eval"
+	"github.com/hubertkaluzny/silly-trader/model"
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
-	"github.com/hubertkaluzny/silly-trader/strategy"
 )
 
 func main() {
@@ -48,7 +48,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  CompressionEncodingFlag,
-						Value: string(strategy.SFExpandedEncoding),
+						Value: string(model.SFExpandedEncoding),
 					},
 				},
 				Action: func(ctx *cli.Context) error {
@@ -63,7 +63,7 @@ func main() {
 						return err
 					}
 
-					encodingType, err := strategy.ToCompressionEncodingType(ctx.String(CompressionEncodingFlag))
+					encodingType, err := model.ToCompressionEncodingType(ctx.String(CompressionEncodingFlag))
 					if err != nil {
 						return err
 					}
@@ -91,7 +91,7 @@ func main() {
 						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
-					model := strategy.NewCompressionModel(opts, encodingType)
+					model := model.NewCompressionModel(opts, encodingType)
 
 					err = model.AddMarketData(parsedRecs)
 					if err != nil {
@@ -109,7 +109,7 @@ func main() {
 					dataFilePath := ctx.Args().Get(0)
 					modelFilePath := ctx.Args().Get(1)
 
-					model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+					model, err := model.LoadCompressionModelFromFile(modelFilePath)
 					if err != nil {
 						return err
 					}
@@ -163,7 +163,7 @@ func main() {
 							outputFilePath := ctx.Args().Get(1)
 							downsampleBy := ctx.Int(DownsampleFlag)
 
-							model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+							model, err := model.LoadCompressionModelFromFile(modelFilePath)
 							if err != nil {
 								return err
 							}
@@ -198,7 +198,7 @@ func main() {
 							modelFilePath := ctx.Args().Get(0)
 							outputFilePath := ctx.Args().Get(1)
 
-							model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+							model, err := model.LoadCompressionModelFromFile(modelFilePath)
 							if err != nil {
 								return err
 							}
