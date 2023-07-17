@@ -21,6 +21,7 @@ func main() {
 	const ResultNFlag = "resultn"
 	const SkipNFlag = "skipn"
 	const NormalisationFlag = "normalisation"
+	const CompressionEncodingFlag = "cencoding"
 	const DownsampleFlag = "downsample"
 
 	app := &cli.App{
@@ -45,6 +46,10 @@ func main() {
 						Name:  NormalisationFlag,
 						Value: string(splicer.ZScore),
 					},
+					&cli.StringFlag{
+						Name:  CompressionEncodingFlag,
+						Value: string(strategy.SFExpandedEncoding),
+					},
 				},
 				Action: func(ctx *cli.Context) error {
 					normalisationType, err := splicer.ToNormalisationType(ctx.String(NormalisationFlag))
@@ -54,6 +59,11 @@ func main() {
 					dataFilePath := ctx.Args().Get(0)
 
 					dataFile, err := os.Open(dataFilePath)
+					if err != nil {
+						return err
+					}
+
+					encodingType, err := strategy.ToCompressionEncodingType(ctx.String(CompressionEncodingFlag))
 					if err != nil {
 						return err
 					}
@@ -81,7 +91,7 @@ func main() {
 						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
-					model := strategy.NewCompressionModel(opts)
+					model := strategy.NewCompressionModel(opts, encodingType)
 
 					err = model.AddMarketData(parsedRecs)
 					if err != nil {

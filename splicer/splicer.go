@@ -18,17 +18,14 @@ type Splice struct {
 type NormalisationType string
 
 const (
-	None              NormalisationType = "none"
-	PercentageChanges NormalisationType = "percentage"
-	ZScore            NormalisationType = "z_score"
+	None   NormalisationType = "none"
+	ZScore NormalisationType = "z_score"
 )
 
 func ToNormalisationType(input string) (NormalisationType, error) {
 	switch input {
 	case string(None):
 		return None, nil
-	case string(PercentageChanges):
-		return PercentageChanges, nil
 	case string(ZScore):
 		return ZScore, nil
 	}
@@ -40,41 +37,6 @@ type SpliceOptions struct {
 	ResultN           int               `json:"result_n"`
 	SkipN             int               `json:"skip_n"`
 	NormalisationType NormalisationType `json:"normalisation_type"`
-}
-
-func normaliseToPercentages(data []record.Market) []record.Market {
-	if len(data) == 0 {
-		return nil
-	}
-	if len(data) == 1 {
-		return []record.Market{
-			{
-				Timestamp: data[0].Timestamp,
-				Open:      1,
-				High:      1,
-				Low:       1,
-				Close:     1,
-				Volume:    1,
-				VWAP:      1,
-			},
-		}
-	}
-	prev := data[0]
-	rest := data[1:]
-	res := make([]record.Market, len(rest))
-	for i, data := range rest {
-		res[i] = record.Market{
-			Timestamp: data.Timestamp,
-			Open:      data.Open / prev.Open,
-			High:      data.High / prev.High,
-			Low:       data.Low / prev.Low,
-			Close:     data.Close / prev.Close,
-			Volume:    data.Volume / prev.Volume,
-			VWAP:      data.VWAP / prev.VWAP,
-		}
-		prev = data
-	}
-	return res
 }
 
 func normaliseToZScore(data []record.Market) []record.Market {
@@ -162,8 +124,6 @@ func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
 	}
 
 	switch opts.NormalisationType {
-	case PercentageChanges:
-		data = normaliseToPercentages(data)
 	case ZScore:
 		data = normaliseToZScore(data)
 	}
