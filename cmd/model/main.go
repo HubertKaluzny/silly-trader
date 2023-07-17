@@ -25,7 +25,7 @@ func main() {
 	const DownsampleFlag = "downsample"
 
 	app := &cli.App{
-		Name: "modeler",
+		Name: "model",
 		Commands: []*cli.Command{
 			{
 				Name: "create",
@@ -44,7 +44,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  NormalisationFlag,
-						Value: string(splicer.ZScore),
+						Value: string(record.ZScore),
 					},
 					&cli.StringFlag{
 						Name:  CompressionEncodingFlag,
@@ -52,7 +52,7 @@ func main() {
 					},
 				},
 				Action: func(ctx *cli.Context) error {
-					normalisationType, err := splicer.ToNormalisationType(ctx.String(NormalisationFlag))
+					normalisationType, err := record.ToNormalisationType(ctx.String(NormalisationFlag))
 					if err != nil {
 						return err
 					}

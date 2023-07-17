@@ -62,7 +62,7 @@ func TestSpliceData(t *testing.T) {
 		runTest(t, 36, SpliceOptions{
 			Period:            1,
 			ResultN:           1,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 
@@ -70,7 +70,7 @@ func TestSpliceData(t *testing.T) {
 		runTest(t, 36, SpliceOptions{
 			Period:            3,
 			ResultN:           1,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 
@@ -78,7 +78,7 @@ func TestSpliceData(t *testing.T) {
 		runTest(t, 36, SpliceOptions{
 			Period:            3,
 			ResultN:           2,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 
@@ -87,7 +87,7 @@ func TestSpliceData(t *testing.T) {
 			Period:            1,
 			ResultN:           1,
 			SkipN:             3,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 
@@ -96,7 +96,7 @@ func TestSpliceData(t *testing.T) {
 			Period:            2,
 			ResultN:           1,
 			SkipN:             3,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 
@@ -105,13 +105,13 @@ func TestSpliceData(t *testing.T) {
 			Period:            5,
 			ResultN:           1,
 			SkipN:             3,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 		runTest(t, 731, SpliceOptions{
 			Period:            18,
 			ResultN:           5,
 			SkipN:             7,
-			NormalisationType: None,
+			NormalisationType: record.None,
 		})
 	})
 }

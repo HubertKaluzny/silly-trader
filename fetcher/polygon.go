@@ -40,7 +40,7 @@ func (p Polygon) Fetch(target FetchTarget, w csv.Writer) error {
 		Timespan:   "hour",
 		From:       models.Millis(target.From),
 		To:         models.Millis(target.To),
-	}.WithOrder(models.Desc).WithLimit(50000).WithAdjusted(true)
+	}.WithOrder(models.Asc).WithLimit(50000).WithAdjusted(true)
 
 	iter := p.client.ListAggs(context.TODO(), params)
 	for iter.Next() {
@@ -58,7 +58,6 @@ func (p Polygon) Fetch(target FetchTarget, w csv.Writer) error {
 		if err != nil {
 			return err
 		}
-
 	}
 	err = iter.Err()
 	if err != nil {
