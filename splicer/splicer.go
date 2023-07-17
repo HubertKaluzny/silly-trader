@@ -28,20 +28,20 @@ func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
 		return nil, errors.New("insufficient data length provided for provided params")
 	}
 
-	switch opts.NormalisationType {
-	case record.ZScore:
-		data = record.NormaliseToZScore(data)
-	}
-
 	var splices []Splice
 	for i := 0; i+period+resultN-1 < len(data); i += 1 + opts.SkipN {
-		spliceData := data[i:(i + period)]
+		curPeriodData := data[i:(i + period + resultN)]
+		switch opts.NormalisationType {
+		case record.ZScore:
+			curPeriodData = record.NormaliseToZScore(curPeriodData)
+		}
+		spliceData := curPeriodData[0:period]
 
 		startTime := spliceData[0].Timestamp
 		endTime := spliceData[period-1].Timestamp
 
 		priceAtClose := spliceData[period-1].Close
-		priceAtResult := data[i+period+resultN-1].Open
+		priceAtResult := curPeriodData[period+resultN-1].Open
 		result := priceAtResult - priceAtClose
 
 		splices = append(splices, Splice{
