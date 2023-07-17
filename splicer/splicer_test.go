@@ -26,13 +26,21 @@ func randomMarketData(length int) []record.Market {
 }
 
 func TestSpliceData(t *testing.T) {
-	runTest := func(t *testing.T, dataSize, period, resultN int) {
+	runTest := func(t *testing.T, dataSize int, opts SpliceOptions) {
 		testData := randomMarketData(dataSize)
-
-		splices, err := SpliceData(testData, SpliceOptions{Period: period, ResultN: resultN})
+		period := opts.Period
+		resultN := opts.ResultN
+		skipN := opts.SkipN
+		splices, err := SpliceData(testData, opts)
 		assert.NoError(t, err)
 
-		expectedLength := dataSize - (resultN + period)
+		iterations := (dataSize - period - resultN + 1) / (1 + skipN)
+		remainder := (dataSize - period - resultN + 1) % (1 + skipN)
+		expectedLength := iterations
+		if remainder > 0 {
+			expectedLength++
+		}
+
 		assert.Equal(t, expectedLength, len(splices))
 
 		fstSplice := splices[0]
@@ -41,21 +49,69 @@ func TestSpliceData(t *testing.T) {
 
 		lastSplice := splices[expectedLength-1]
 		assert.Equal(t, period, len(lastSplice.Data))
-		end := dataSize - resultN - 1
-		start := end - period
+		start := (iterations - 1) * (1 + skipN)
+		if remainder > 0 {
+			start += 1 + skipN
+		}
+		end := start + period
 		expectedLastSpliceData := testData[start:end]
 		assert.ElementsMatch(t, expectedLastSpliceData, lastSplice.Data)
 	}
 
 	t.Run("single period splices", func(t *testing.T) {
-		runTest(t, 36, 1, 1)
+		runTest(t, 36, SpliceOptions{
+			Period:            1,
+			ResultN:           1,
+			NormalisationType: None,
+		})
 	})
 
 	t.Run("uneven period splices", func(t *testing.T) {
-		runTest(t, 36, 3, 1)
+		runTest(t, 36, SpliceOptions{
+			Period:            3,
+			ResultN:           1,
+			NormalisationType: None,
+		})
 	})
 
 	t.Run("uneven period and resultN splices", func(t *testing.T) {
-		runTest(t, 36, 3, 2)
+		runTest(t, 36, SpliceOptions{
+			Period:            3,
+			ResultN:           2,
+			NormalisationType: None,
+		})
+	})
+
+	t.Run("skipping odd number of splices", func(t *testing.T) {
+		runTest(t, 36, SpliceOptions{
+			Period:            1,
+			ResultN:           1,
+			SkipN:             3,
+			NormalisationType: None,
+		})
+	})
+
+	t.Run("skipping odd number of splices, and periods", func(t *testing.T) {
+		runTest(t, 36, SpliceOptions{
+			Period:            2,
+			ResultN:           1,
+			SkipN:             3,
+			NormalisationType: None,
+		})
+	})
+
+	t.Run("Odd sized dataset", func(t *testing.T) {
+		runTest(t, 37, SpliceOptions{
+			Period:            5,
+			ResultN:           1,
+			SkipN:             3,
+			NormalisationType: None,
+		})
+		runTest(t, 731, SpliceOptions{
+			Period:            18,
+			ResultN:           5,
+			SkipN:             7,
+			NormalisationType: None,
+		})
 	})
 }

@@ -2,7 +2,6 @@ package splicer
 
 import (
 	"errors"
-	"fmt"
 	"math"
 
 	"github.com/hubertkaluzny/silly-trader/record"
@@ -171,16 +170,13 @@ func SpliceData(data []record.Market, opts SpliceOptions) ([]Splice, error) {
 
 	var splices []Splice
 	for i := 0; i+period+resultN-1 < len(data); i += 1 + opts.SkipN {
-		fmt.Printf("i: %d, period: %d, skip: %d, result: %d\n", i, period, opts.SkipN, opts.ResultN)
 		spliceData := data[i:(i + period)]
 
 		startTime := spliceData[0].Timestamp
 		endTime := spliceData[period-1].Timestamp
 
 		priceAtClose := spliceData[period-1].Close
-
 		priceAtResult := data[i+period+resultN-1].Open
-
 		result := priceAtResult - priceAtClose
 
 		splices = append(splices, Splice{
