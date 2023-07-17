@@ -19,6 +19,7 @@ func main() {
 
 	const PeriodFlag = "period"
 	const ResultNFlag = "resultn"
+	const SkipNFlag = "skipn"
 	const NormalisationFlag = "normalisation"
 	const DownsampleFlag = "downsample"
 
@@ -36,6 +37,10 @@ func main() {
 						Name:  ResultNFlag,
 						Value: 24,
 					},
+					&cli.IntFlag{
+						Name:  SkipNFlag,
+						Value: 24,
+					},
 					&cli.StringFlag{
 						Name:  NormalisationFlag,
 						Value: string(splicer.ZScore),
@@ -46,8 +51,6 @@ func main() {
 					if err != nil {
 						return err
 					}
-
-					ctx.Int(PeriodFlag)
 					dataFilePath := ctx.Args().Get(0)
 
 					dataFile, err := os.Open(dataFilePath)
@@ -66,7 +69,7 @@ func main() {
 					for i, rec := range records[1:] {
 						parsed, err := record.UnserialiseMarket(rec)
 						if err != nil {
-							panic(err)
+							return err
 						}
 						parsedRecs[i] = *parsed
 					}
@@ -74,6 +77,7 @@ func main() {
 					opts := splicer.SpliceOptions{
 						Period:            ctx.Int(PeriodFlag),
 						ResultN:           ctx.Int(ResultNFlag),
+						SkipN:             ctx.Int(SkipNFlag),
 						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
@@ -90,6 +94,50 @@ func main() {
 				},
 			},
 			{
+				Name: "add",
+				Action: func(ctx *cli.Context) error {
+					dataFilePath := ctx.Args().Get(0)
+					modelFilePath := ctx.Args().Get(1)
+
+					model, err := strategy.LoadCompressionModelFromFile(modelFilePath)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+
+					dataFile, err := os.Open(dataFilePath)
+					if err != nil {
+						return err
+					}
+
+					fmt.Println("Opening data file...")
+					reader := csv.NewReader(dataFile)
+					records, err := reader.ReadAll()
+					if err != nil {
+						return err
+					}
+
+					parsedRecs := make([]record.Market, len(records)-1)
+					for i, rec := range records[1:] {
+						parsed, err := record.UnserialiseMarket(rec)
+						if err != nil {
+							return err
+						}
+						parsedRecs[i] = *parsed
+					}
+					fmt.Printf("Parsed %d records.\n", len(parsedRecs))
+
+					err = model.AddMarketData(parsedRecs)
+					if err != nil {
+						return err
+					}
+
+					fmt.Println("Data added to model, saving...")
+
+					return model.SaveToFile(modelFilePath)
+				},
+			},
+			{
 				Name: "eval",
 				Subcommands: []*cli.Command{
 					{
@@ -97,7 +145,7 @@ func main() {
 						Flags: []cli.Flag{
 							&cli.IntFlag{
 								Name:  DownsampleFlag,
-								Value: 2,
+								Value: 1,
 							},
 						},
 						Action: func(ctx *cli.Context) error {
