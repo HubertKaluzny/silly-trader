@@ -26,6 +26,7 @@ const (
 	SimpleEncoding     CompressionEncodingType = "simple"
 	ExpandedEncoding   CompressionEncodingType = "expanded"
 	SFExpandedEncoding CompressionEncodingType = "expanded_sf"
+	CharVarLength      CompressionEncodingType = "char_var"
 )
 
 type PredictionStrategy string
@@ -49,6 +50,8 @@ func ToCompressionEncodingType(input string) (CompressionEncodingType, error) {
 		return ExpandedEncoding, nil
 	case string(SFExpandedEncoding):
 		return SFExpandedEncoding, nil
+	case string(CharVarLength):
+		return CharVarLength, nil
 	}
 	return SimpleEncoding, errors.New("invalid encoding type specified")
 }
@@ -300,6 +303,36 @@ func (model *CompressionModel) SaveToFile(file string) error {
 	return nil
 }
 
+func EncodeToCharVarLength(rec record.Market) string {
+	convertFloat := func(f float64) string {
+
+		negative := false
+		if f < 0 {
+			negative = true
+			f = -f
+		}
+		f *= 1000
+		val := int(math.Floor(f))
+		resStr := make([]rune, val)
+		for i := 0; i < val; i++ {
+			if negative {
+				resStr[i] = 'N'
+			} else {
+				resStr[i] = 'P'
+			}
+		}
+		return string(resStr)
+	}
+	return fmt.Sprintf("%s,%s,%s,%s,%s,%s-",
+		convertFloat(rec.Open),
+		convertFloat(rec.High),
+		convertFloat(rec.Low),
+		convertFloat(rec.Close),
+		convertFloat(rec.Volume),
+		convertFloat(rec.VWAP),
+	)
+}
+
 func EncodeToSimpleString(rec record.Market) string {
 	return fmt.Sprintf(`%.6f,%.6f,%.6f,%.6f,%6.f,%6.f-`,
 		rec.Open,
@@ -380,6 +413,8 @@ func CompressMarketData(data []record.Market, encodingType CompressionEncodingTy
 			b.WriteString(EncodeToExpandedString(rec))
 		case SFExpandedEncoding:
 			b.WriteString(EncodeToSFExpandedString(rec))
+		case CharVarLength:
+			b.WriteString(EncodeToCharVarLength(rec))
 		}
 	}
 

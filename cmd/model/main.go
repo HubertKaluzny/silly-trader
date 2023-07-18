@@ -48,7 +48,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  CompressionEncodingFlag,
-						Value: string(model.ExpandedEncoding),
+						Value: string(model.CharVarLength),
 					},
 				},
 				Action: func(ctx *cli.Context) error {
