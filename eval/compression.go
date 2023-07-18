@@ -13,7 +13,7 @@ import (
 func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*charts.HeatMap, error) {
 	hmap := charts.NewHeatMap()
 
-	similarityMap, err := model.SimilarityMap()
+	similarityMap, err := model.DistanceMap()
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +77,40 @@ func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*chart
 	hmap.AddSeries("Distance", hmData)
 
 	return hmap, nil
+}
+
+func CompressionDstVarHistogram(model *model.CompressionModel) (*charts.Bar, error) {
+	const bucketSize = float64(0.001)
+
+	bar := charts.NewBar()
+
+	buckets, err := model.DistanceVarianceHistogram(bucketSize)
+	if err != nil {
+		return nil, err
+	}
+
+	barData := make([]opts.BarData, len(buckets))
+	axis := make([]int, len(buckets))
+
+	i := 0
+	for bucket := range buckets {
+		axis[i] = bucket
+		i++
+	}
+	sort.Ints(axis)
+	for i, bucket := range axis {
+		barData[i] = opts.BarData{Value: buckets[bucket]}
+	}
+
+	bar.SetXAxis(axis).AddSeries("Distance", barData)
+
+	bar.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title: "Compression Model Distance Result variance",
+		}),
+	)
+
+	return bar, nil
 }
 
 func CompressionSizeHistogram(model *model.CompressionModel) (*charts.Bar, error) {

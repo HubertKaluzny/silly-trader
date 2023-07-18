@@ -48,7 +48,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  CompressionEncodingFlag,
-						Value: string(model.SFExpandedEncoding),
+						Value: string(model.ExpandedEncoding),
 					},
 				},
 				Action: func(ctx *cli.Context) error {
@@ -91,16 +91,16 @@ func main() {
 						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
-					model := model.NewCompressionModel(opts, encodingType)
+					importedModel := model.NewCompressionModel(opts, encodingType)
 
-					err = model.AddMarketData(parsedRecs)
+					err = importedModel.AddMarketData(parsedRecs)
 					if err != nil {
 						return err
 					}
 
 					fmt.Println("Data added to model, saving...")
 					outputFilePath := ctx.Args().Get(1)
-					return model.SaveToFile(outputFilePath)
+					return importedModel.SaveToFile(outputFilePath)
 				},
 			},
 			{
@@ -109,11 +109,11 @@ func main() {
 					dataFilePath := ctx.Args().Get(0)
 					modelFilePath := ctx.Args().Get(1)
 
-					model, err := model.LoadCompressionModelFromFile(modelFilePath)
+					importedModel, err := model.LoadCompressionModelFromFile(modelFilePath)
 					if err != nil {
 						return err
 					}
-					fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+					fmt.Printf("Loaded model with %d records.\n", len(importedModel.Items))
 
 					dataFile, err := os.Open(dataFilePath)
 					if err != nil {
@@ -137,14 +137,14 @@ func main() {
 					}
 					fmt.Printf("Parsed %d records.\n", len(parsedRecs))
 
-					err = model.AddMarketData(parsedRecs)
+					err = importedModel.AddMarketData(parsedRecs)
 					if err != nil {
 						return err
 					}
 
 					fmt.Println("Data added to model, saving...")
 
-					return model.SaveToFile(modelFilePath)
+					return importedModel.SaveToFile(modelFilePath)
 				},
 			},
 			{
@@ -163,13 +163,18 @@ func main() {
 							outputFilePath := ctx.Args().Get(1)
 							downsampleBy := ctx.Int(DownsampleFlag)
 
-							model, err := model.LoadCompressionModelFromFile(modelFilePath)
+							importedModel, err := model.LoadCompressionModelFromFile(modelFilePath)
 							if err != nil {
 								return err
 							}
-							fmt.Printf("Loaded model with %d records.\n", len(model.Items))
+							fmt.Printf("Loaded model with %d records.\n", len(importedModel.Items))
 
-							hmap, err := eval.CompressionHeatMap(model, downsampleBy)
+							hmap, err := eval.CompressionHeatMap(importedModel, downsampleBy)
+							if err != nil {
+								return err
+							}
+							// save model distance map if it was calculated
+							err = importedModel.SaveToFile(modelFilePath)
 							if err != nil {
 								return err
 							}
@@ -193,17 +198,57 @@ func main() {
 						},
 					},
 					{
+						Name: "dstvar",
+						Action: func(ctx *cli.Context) error {
+							modelFilePath := ctx.Args().Get(0)
+							outputFilePath := ctx.Args().Get(1)
+
+							importedModel, err := model.LoadCompressionModelFromFile(modelFilePath)
+							if err != nil {
+								return err
+							}
+							fmt.Printf("Loaded model with %d records.\n", len(importedModel.Items))
+
+							hmap, err := eval.CompressionDstVarHistogram(importedModel)
+							if err != nil {
+								return err
+							}
+							// save model distance map if it was calculated
+							err = importedModel.SaveToFile(modelFilePath)
+							if err != nil {
+								return err
+							}
+
+							fmt.Println("Distance result variance graph generated, rendering output.")
+							outputFile, err := os.Create(outputFilePath)
+							if err != nil {
+								return err
+							}
+
+							page := components.NewPage()
+							page.SetLayout(components.PageCenterLayout)
+							page.AddCharts(hmap)
+
+							err = page.Render(outputFile)
+							if err != nil {
+								return err
+							}
+
+							return outputFile.Close()
+						},
+					},
+					{
 						Name: "histogram",
 						Action: func(ctx *cli.Context) error {
 							modelFilePath := ctx.Args().Get(0)
 							outputFilePath := ctx.Args().Get(1)
 
-							model, err := model.LoadCompressionModelFromFile(modelFilePath)
+							importedModel, err := model.LoadCompressionModelFromFile(modelFilePath)
 							if err != nil {
 								return err
 							}
-							fmt.Printf("Loaded model with %d records.\n", len(model.Items))
-							histogram, err := eval.CompressionSizeHistogram(model)
+							fmt.Printf("Loaded model with %d records.\n", len(importedModel.Items))
+							histogram, err := eval.CompressionSizeHistogram(importedModel)
 							if err != nil {
 								return err
 							}
