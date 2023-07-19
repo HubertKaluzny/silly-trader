@@ -3,6 +3,7 @@ package model
 import (
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,12 +79,12 @@ func LoadCompressionModelFromFile(file string) (*CompressionModel, error) {
 		return nil, err
 	}
 	defer modelFile.Close()
-	/*reader, err := gzip.NewReader(modelFile)
+	reader, err := gzip.NewReader(modelFile)
 	if err != nil {
 		return nil, err
-	}*/
+	}
 	var model CompressionModel
-	decoder := json.NewDecoder(modelFile)
+	decoder := json.NewDecoder(reader)
 	err = decoder.Decode(&model)
 	if err != nil {
 		return nil, err
@@ -148,12 +149,15 @@ func (model *CompressionModel) GetClosestNeighbours(observation []record.Market,
 	results := make([]*Neighbour, nearestN)
 	for _, item := range model.Items {
 		item := item
-		concatted := append(item.Splice.Data, observation...)
-		compressedConcatted, err := CompressMarketData(concatted, model.EncodingType)
+		combined, err := record.CombineInterleaved(item.Splice.Data, observation)
 		if err != nil {
 			return nil, err
 		}
-		Cx1x2 := float64(len(compressedConcatted))
+		compressedCombined, err := CompressMarketData(combined, model.EncodingType)
+		if err != nil {
+			return nil, err
+		}
+		Cx1x2 := float64(len(compressedCombined))
 		Cx2 := float64(item.CompressedSize)
 		distance := (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2)
 
@@ -183,13 +187,16 @@ func DistanceBetween(x1 CompressionItem, x2 CompressionItem, encodingType Compre
 	Cx1 := float64(x1.CompressedSize)
 	Cx2 := float64(x2.CompressedSize)
 
-	concatted := append(x1.Splice.Data, x2.Splice.Data...)
-	compressedConcatted, err := CompressMarketData(concatted, encodingType)
+	combined, err := record.CombineInterleaved(x1.Splice.Data, x2.Splice.Data)
+	if err != nil {
+		return math.MaxFloat64, err
+	}
+	compressedCombined, err := CompressMarketData(combined, encodingType)
 	if err != nil {
 		return math.MaxFloat64, err
 	}
 
-	Cx1x2 := float64(len(compressedConcatted))
+	Cx1x2 := float64(len(compressedCombined))
 
 	return (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2), nil
 }
@@ -293,60 +300,85 @@ func (model *CompressionModel) SaveToFile(file string) error {
 	if err != nil {
 		return err
 	}
-	//gzipWriter := gzip.NewWriter(modelFile)
-	encoder := json.NewEncoder(modelFile)
+	gzipWriter := gzip.NewWriter(modelFile)
+	encoder := json.NewEncoder(gzipWriter)
 	err = encoder.Encode(model)
 	if err != nil {
 		return err
 	}
-	//err = encoder.Flush()
+	err = gzipWriter.Flush()
 	return nil
 }
 
-func EncodeToCharVarLength(rec record.Market) string {
+func EncodeToCharVarLength(records []record.Market, field string) string {
 	convertFloat := func(f float64) string {
-
+		val := int(math.Floor(f * 1000))
 		negative := false
-		if f < 0 {
+		if val < 0 {
 			negative = true
-			f = -f
+			val = -val
 		}
-		f *= 1000
-		val := int(math.Floor(f))
-		resStr := make([]rune, val)
-		for i := 0; i < val; i++ {
-			if negative {
-				resStr[i] = 'N'
-			} else {
-				resStr[i] = 'P'
-			}
+		if val == 0 {
+			return "0"
+		}
+		resStr := make([]rune, val, val)
+		if negative {
+			resStr[0] = 'N'
+		} else {
+			resStr[0] = 'P'
+		}
+		for i := 1; i < val; i *= 2 {
+			copy(resStr[i:], resStr[:i])
 		}
 		return string(resStr)
 	}
-	return fmt.Sprintf("%s,%s,%s,%s,%s,%s-",
-		convertFloat(rec.Open),
-		convertFloat(rec.High),
-		convertFloat(rec.Low),
-		convertFloat(rec.Close),
-		convertFloat(rec.Volume),
-		convertFloat(rec.VWAP),
-	)
+	var b strings.Builder
+	for _, rec := range records {
+		switch field {
+		case "open":
+			b.WriteString(convertFloat(rec.Open))
+		case "high":
+			b.WriteString(convertFloat(rec.High))
+		case "low":
+			b.WriteString(convertFloat(rec.Low))
+		case "close":
+			b.WriteString(convertFloat(rec.Close))
+		case "volume":
+			b.WriteString(convertFloat(rec.Volume))
+		case "vwap":
+			b.WriteString(convertFloat(rec.VWAP))
+		}
+		b.WriteRune(',')
+	}
+
+	return b.String()
 }
 
-func EncodeToSimpleString(rec record.Market) string {
-	return fmt.Sprintf(`%.6f,%.6f,%.6f,%.6f,%6.f,%6.f-`,
-		rec.Open,
-		rec.High,
-		rec.Low,
-		rec.Close,
-		rec.Volume,
-		rec.VWAP,
-	)
+func EncodeToSimpleString(records []record.Market, field string) string {
+	var b strings.Builder
+	for _, rec := range records {
+		switch field {
+		case "open":
+			b.WriteString(fmt.Sprintf("%.6f", rec.Open))
+		case "high":
+			b.WriteString(fmt.Sprintf("%.6f", rec.High))
+		case "low":
+			b.WriteString(fmt.Sprintf("%.6f", rec.Low))
+		case "close":
+			b.WriteString(fmt.Sprintf("%.6f", rec.Close))
+		case "volume":
+			b.WriteString(fmt.Sprintf("%.6f", rec.Volume))
+		case "vwap":
+			b.WriteString(fmt.Sprintf("%.6f", rec.VWAP))
+		}
+	}
+
+	return b.String()
 }
 
 // EncodeToExpandedString repeats each digit in string by its value
 // e.g 1.2345 -> 1.22333444455555
-func EncodeToExpandedString(rec record.Market) string {
+func EncodeToExpandedString(records []record.Market, field string) string {
 	// happy to hear from anyone that has a less
 	// silly way of doing this
 	convertFloat := func(f float64) string {
@@ -364,20 +396,32 @@ func EncodeToExpandedString(rec record.Market) string {
 		}
 		return string(newStr)
 	}
-	return fmt.Sprintf("%s,%s,%s,%s,%s,%s-",
-		convertFloat(rec.Open),
-		convertFloat(rec.High),
-		convertFloat(rec.Low),
-		convertFloat(rec.Close),
-		convertFloat(rec.Volume),
-		convertFloat(rec.VWAP),
-	)
+	var b strings.Builder
+	for _, rec := range records {
+		switch field {
+		case "open":
+			b.WriteString(convertFloat(rec.Open))
+		case "high":
+			b.WriteString(convertFloat(rec.High))
+		case "low":
+			b.WriteString(convertFloat(rec.Low))
+		case "close":
+			b.WriteString(convertFloat(rec.Close))
+		case "volume":
+			b.WriteString(convertFloat(rec.Volume))
+		case "vwap":
+			b.WriteString(convertFloat(rec.VWAP))
+		}
+		b.WriteRune(',')
+	}
+
+	return b.String()
 }
 
 // EncodeToSFExpandedString repeats each digit in string by its value,
 // count is reduced by number of preceding significant digits
 // e.g 3.4 -> 333.444
-func EncodeToSFExpandedString(rec record.Market) string {
+func EncodeToSFExpandedString(records []record.Market, field string) string {
 	convertFloat := func(f float64) string {
 		var newStr []rune
 		str := fmt.Sprintf("%.6f", f)
@@ -393,39 +437,66 @@ func EncodeToSFExpandedString(rec record.Market) string {
 		}
 		return string(newStr)
 	}
-	return fmt.Sprintf("%s,%s,%s,%s,%s,%s-",
-		convertFloat(rec.Open),
-		convertFloat(rec.High),
-		convertFloat(rec.Low),
-		convertFloat(rec.Close),
-		convertFloat(rec.Volume),
-		convertFloat(rec.VWAP),
-	)
+	var b strings.Builder
+	for _, rec := range records {
+		switch field {
+		case "open":
+			b.WriteString(convertFloat(rec.Open))
+		case "high":
+			b.WriteString(convertFloat(rec.High))
+		case "low":
+			b.WriteString(convertFloat(rec.Low))
+		case "close":
+			b.WriteString(convertFloat(rec.Close))
+		case "volume":
+			b.WriteString(convertFloat(rec.Volume))
+		case "vwap":
+			b.WriteString(convertFloat(rec.VWAP))
+		}
+		b.WriteRune(',')
+	}
+
+	return b.String()
 }
 
 func CompressMarketData(data []record.Market, encodingType CompressionEncodingType) ([]byte, error) {
-	var b strings.Builder
-	for _, rec := range data {
-		switch encodingType {
-		case SimpleEncoding:
-			b.WriteString(EncodeToSimpleString(rec))
-		case ExpandedEncoding:
-			b.WriteString(EncodeToExpandedString(rec))
-		case SFExpandedEncoding:
-			b.WriteString(EncodeToSFExpandedString(rec))
-		case CharVarLength:
-			b.WriteString(EncodeToCharVarLength(rec))
-		}
-	}
-
 	var buffBytes []byte
 	buff := bytes.NewBuffer(buffBytes)
-	writer := gzip.NewWriter(buff)
-	_, err := writer.Write([]byte(b.String()))
-	if err != nil {
-		return nil, err
+	writer := zlib.NewWriter(buff)
+
+	// not my proudest work :(
+	switch encodingType {
+	case SimpleEncoding:
+		writer.Write([]byte(EncodeToSimpleString(data, "open")))
+		writer.Write([]byte(EncodeToSimpleString(data, "high")))
+		writer.Write([]byte(EncodeToSimpleString(data, "low")))
+		writer.Write([]byte(EncodeToSimpleString(data, "close")))
+		writer.Write([]byte(EncodeToSimpleString(data, "volume")))
+		writer.Write([]byte(EncodeToSimpleString(data, "vwap")))
+	case ExpandedEncoding:
+		writer.Write([]byte(EncodeToExpandedString(data, "open")))
+		writer.Write([]byte(EncodeToExpandedString(data, "high")))
+		writer.Write([]byte(EncodeToExpandedString(data, "low")))
+		writer.Write([]byte(EncodeToExpandedString(data, "close")))
+		writer.Write([]byte(EncodeToExpandedString(data, "volume")))
+		writer.Write([]byte(EncodeToExpandedString(data, "vwap")))
+	case SFExpandedEncoding:
+		writer.Write([]byte(EncodeToSFExpandedString(data, "open")))
+		writer.Write([]byte(EncodeToSFExpandedString(data, "high")))
+		writer.Write([]byte(EncodeToSFExpandedString(data, "low")))
+		writer.Write([]byte(EncodeToSFExpandedString(data, "close")))
+		writer.Write([]byte(EncodeToSFExpandedString(data, "volume")))
+		writer.Write([]byte(EncodeToSFExpandedString(data, "vwap")))
+	case CharVarLength:
+		writer.Write([]byte(EncodeToCharVarLength(data, "open")))
+		writer.Write([]byte(EncodeToCharVarLength(data, "high")))
+		writer.Write([]byte(EncodeToCharVarLength(data, "low")))
+		writer.Write([]byte(EncodeToCharVarLength(data, "close")))
+		writer.Write([]byte(EncodeToCharVarLength(data, "volume")))
+		writer.Write([]byte(EncodeToCharVarLength(data, "vwap")))
 	}
-	err = writer.Flush()
+
+	err := writer.Flush()
 	if err != nil {
 		return nil, err
 	}
