@@ -28,14 +28,20 @@ func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*chart
 			minLocalValue := math.MaxFloat64
 
 			// local loop
-			for x := 0; x < downSampleBy; x++ {
-				for y := 0; y < downSampleBy; y++ {
-					ix := (downSampleBy * i) + x
-					jy := (downSampleBy * j) + y
-					minLocalValue = math.Min(minLocalValue, similarityMap[ix][jy])
+			if downSampleBy > 1 {
+				for x := 0; x < downSampleBy; x++ {
+					for y := 0; y < downSampleBy; y++ {
+						ix := (downSampleBy * i) + x
+						jy := (downSampleBy * j) + y
+						minLocalValue = math.Min(minLocalValue, similarityMap[ix][jy])
+					}
 				}
+				hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, minLocalValue}}
+			} else {
+				minLocalValue = similarityMap[i][j]
+				hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, similarityMap[i][j]}}
 			}
-			hmData[inserted] = opts.HeatMapData{Value: [3]interface{}{i, j, minLocalValue}}
+
 			inserted += 1
 			if minLocalValue > max {
 				max = minLocalValue
