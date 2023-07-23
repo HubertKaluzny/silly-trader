@@ -53,7 +53,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  ModelCombineStrategyFlag,
-						Value: string(model.InterleaveCombine),
+						Value: string(record.InterleaveCombine),
 					},
 				},
 				Action: func(ctx *cli.Context) error {
@@ -73,7 +73,7 @@ func main() {
 						return err
 					}
 
-					combineStrat, err := model.ToCombineStrategy(ctx.String(ModelCombineStrategyFlag))
+					combineStrat, err := record.ToCombineStrategy(ctx.String(ModelCombineStrategyFlag))
 					if err != nil {
 						return err
 					}

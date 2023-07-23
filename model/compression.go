@@ -32,23 +32,6 @@ const (
 	RomanEncoding      CompressionEncodingType = "roman"
 )
 
-type CombineStrategy string
-
-const (
-	InterleaveCombine CombineStrategy = "interleave"
-	ConcatCombine     CombineStrategy = "concat"
-)
-
-func ToCombineStrategy(input string) (CombineStrategy, error) {
-	switch input {
-	case string(InterleaveCombine):
-		return InterleaveCombine, nil
-	case string(ConcatCombine):
-		return ConcatCombine, nil
-	}
-	return InterleaveCombine, errors.New("invalid combine strategy specified")
-}
-
 type PredictionStrategy string
 
 const (
@@ -89,10 +72,10 @@ type CompressionModel struct {
 	Items             []CompressionItem       `json:"items"`
 	EncodingType      CompressionEncodingType `json:"encoding_type"`
 	CachedDistanceMap [][]float64             `json:"distance_map"`
-	CombineStrategy   CombineStrategy         `json:"combine_strategy"`
+	CombineStrategy   record.CombineStrategy  `json:"combine_strategy"`
 }
 
-func NewCompressionModel(spliceOpts splicer.SpliceOptions, encodingType CompressionEncodingType, combineStrat CombineStrategy) *CompressionModel {
+func NewCompressionModel(spliceOpts splicer.SpliceOptions, encodingType CompressionEncodingType, combineStrat record.CombineStrategy) *CompressionModel {
 	return &CompressionModel{
 		SpliceOptions:   spliceOpts,
 		EncodingType:    encodingType,
@@ -189,19 +172,12 @@ func (model *CompressionModel) GetClosestNeighbours(observation record.Model, ne
 	for _, item := range model.Items {
 		item := item
 
-		var combined record.Model
-		switch model.CombineStrategy {
-		case InterleaveCombine:
-			interleaved, err := record.InterleaveModels(item.Data, observation)
-			if err != nil {
-				return nil, err
-			}
-			combined = *interleaved
-		case ConcatCombine:
-			combined = record.ConcatModels(item.Data, observation)
+		combined, err := record.CombineModels(item.Data, observation, model.CombineStrategy)
+		if err != nil {
+			return nil, err
 		}
 
-		compressedCombined, err := GetCompressedLength(c, combined, model.EncodingType)
+		compressedCombined, err := GetCompressedLength(c, *combined, model.EncodingType)
 		if err != nil {
 			return nil, err
 		}
@@ -231,22 +207,16 @@ func (model *CompressionModel) GetClosestNeighbours(observation record.Model, ne
 	return results, nil
 }
 
-func DistanceBetween(c libdeflate.Compressor, x1 CompressionItem, x2 CompressionItem, encodingType CompressionEncodingType, combineStrat CombineStrategy) (float64, error) {
+func DistanceBetween(c libdeflate.Compressor, x1 CompressionItem, x2 CompressionItem, encodingType CompressionEncodingType, combineStrat record.CombineStrategy) (float64, error) {
 	Cx1 := float64(x1.CompressedSize)
 	Cx2 := float64(x2.CompressedSize)
 
-	var combined record.Model
-	switch combineStrat {
-	case InterleaveCombine:
-		interleaved, err := record.InterleaveModels(x1.Data, x2.Data)
-		if err != nil {
-			return math.MaxFloat64, err
-		}
-		combined = *interleaved
-	case ConcatCombine:
-		combined = record.ConcatModels(x1.Data, x2.Data)
+	combined, err := record.CombineModels(x1.Data, x2.Data, combineStrat)
+	if err != nil {
+		return math.MaxFloat64, err
 	}
-	compressedCombined, err := GetCompressedLength(c, combined, encodingType)
+
+	compressedCombined, err := GetCompressedLength(c, *combined, encodingType)
 	if err != nil {
 		return math.MaxFloat64, err
 	}
