@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -276,7 +277,8 @@ func (model *CompressionModel) DistanceVarianceHistogram(bucketSize float64) (ma
 			if destinationBucket < smallestBucket {
 				smallestBucket = destinationBucket
 			}
-			resultBuckets[destinationBucket] = append(resultBuckets[destinationBucket], model.Items[i].Result)
+
+			resultBuckets[destinationBucket] = append(resultBuckets[destinationBucket], math.Abs(model.Items[i].Result-model.Items[j].Result))
 		}
 	}
 
@@ -417,19 +419,21 @@ func EncodeToRomanNumerals(b *strings.Builder, records []float64) {
 		1:    "I",
 	}
 	convertFloat := func(f float64) {
-		val := int(math.Round(f * 1000))
-		negative := false
-		if val < 0 {
-			negative = true
-			val = -val
+		if f < 0 {
+			b.WriteRune('-')
+			f = -f
 		}
+
+		intVal := math.Round(f)
+		b.WriteString(strconv.FormatInt(int64(intVal), 10))
+
+		f -= intVal
+		val := int(math.Round(f * 1000))
+
 		if val == 0 {
-			b.WriteRune('0')
 			return
 		}
-		if negative {
-			b.WriteRune('-')
-		}
+
 		for romanVal, romanDigit := range conversions {
 			for val >= romanVal {
 				b.WriteString(romanDigit)
@@ -533,6 +537,7 @@ func GetCompressedLength(c libdeflate.Compressor, data record.Model, encodingTyp
 	if err != nil {
 		return -1, err
 	}
+
 	hSize, err := calcSize(data.Highs)
 	if err != nil {
 		return -1, err
@@ -549,6 +554,7 @@ func GetCompressedLength(c libdeflate.Compressor, data record.Model, encodingTyp
 	if err != nil {
 		return -1, err
 	}
+
 	vwapSize, err := calcSize(data.VWAPs)
 	if err != nil {
 		return -1, err
