@@ -22,6 +22,7 @@ func main() {
 	const SkipNFlag = "skipn"
 	const NormalisationFlag = "normalisation"
 	const CompressionEncodingFlag = "cencoding"
+	const ModelCombineStrategyFlag = "combine"
 	const DownsampleFlag = "downsample"
 
 	app := &cli.App{
@@ -40,7 +41,7 @@ func main() {
 					},
 					&cli.IntFlag{
 						Name:  SkipNFlag,
-						Value: 24,
+						Value: 3,
 					},
 					&cli.StringFlag{
 						Name:  NormalisationFlag,
@@ -48,7 +49,11 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  CompressionEncodingFlag,
-						Value: string(model.CharVarLength),
+						Value: string(model.RomanEncoding),
+					},
+					&cli.StringFlag{
+						Name:  ModelCombineStrategyFlag,
+						Value: string(model.InterleaveCombine),
 					},
 				},
 				Action: func(ctx *cli.Context) error {
@@ -64,6 +69,11 @@ func main() {
 					}
 
 					encodingType, err := model.ToCompressionEncodingType(ctx.String(CompressionEncodingFlag))
+					if err != nil {
+						return err
+					}
+
+					combineStrat, err := model.ToCombineStrategy(ctx.String(ModelCombineStrategyFlag))
 					if err != nil {
 						return err
 					}
@@ -91,7 +101,7 @@ func main() {
 						NormalisationType: normalisationType,
 					}
 					fmt.Printf("Splicing data with options: %+v\n", opts)
-					importedModel := model.NewCompressionModel(opts, encodingType)
+					importedModel := model.NewCompressionModel(opts, encodingType, combineStrat)
 
 					err = importedModel.AddMarketData(parsedRecs)
 					if err != nil {
@@ -155,7 +165,7 @@ func main() {
 						Flags: []cli.Flag{
 							&cli.IntFlag{
 								Name:  DownsampleFlag,
-								Value: 1,
+								Value: 8,
 							},
 						},
 						Action: func(ctx *cli.Context) error {

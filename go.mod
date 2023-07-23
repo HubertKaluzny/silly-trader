@@ -3,6 +3,7 @@ module github.com/hubertkaluzny/silly-trader
 go 1.18
 
 require (
+	github.com/4kills/go-libdeflate/v2 v2.0.3
 	github.com/go-echarts/go-echarts/v2 v2.2.6
 	github.com/polygon-io/client-go v1.13.1
 	github.com/stretchr/testify v1.8.4

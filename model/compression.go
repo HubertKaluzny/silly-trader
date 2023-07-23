@@ -1,9 +1,7 @@
 package model
 
 import (
-	"bytes"
 	"compress/gzip"
-	"compress/zlib"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/4kills/go-libdeflate/v2"
 
 	"github.com/hubertkaluzny/silly-trader/record"
 	"github.com/hubertkaluzny/silly-trader/splicer"
@@ -28,7 +28,25 @@ const (
 	ExpandedEncoding   CompressionEncodingType = "expanded"
 	SFExpandedEncoding CompressionEncodingType = "expanded_sf"
 	CharVarLength      CompressionEncodingType = "char_var"
+	RomanEncoding      CompressionEncodingType = "roman"
 )
+
+type CombineStrategy string
+
+const (
+	InterleaveCombine CombineStrategy = "interleave"
+	ConcatCombine     CombineStrategy = "concat"
+)
+
+func ToCombineStrategy(input string) (CombineStrategy, error) {
+	switch input {
+	case string(InterleaveCombine):
+		return InterleaveCombine, nil
+	case string(ConcatCombine):
+		return ConcatCombine, nil
+	}
+	return InterleaveCombine, errors.New("invalid combine strategy specified")
+}
 
 type PredictionStrategy string
 
@@ -53,13 +71,16 @@ func ToCompressionEncodingType(input string) (CompressionEncodingType, error) {
 		return SFExpandedEncoding, nil
 	case string(CharVarLength):
 		return CharVarLength, nil
+	case string(RomanEncoding):
+		return RomanEncoding, nil
 	}
 	return SimpleEncoding, errors.New("invalid encoding type specified")
 }
 
 type CompressionItem struct {
-	Splice         splicer.Splice `json:"splice"`
-	CompressedSize int            `json:"compressed_length"`
+	Data           record.Model `json:"model"`
+	CompressedSize int          `json:"compressed_length"`
+	Result         float64      `json:"result"`
 }
 
 type CompressionModel struct {
@@ -67,10 +88,15 @@ type CompressionModel struct {
 	Items             []CompressionItem       `json:"items"`
 	EncodingType      CompressionEncodingType `json:"encoding_type"`
 	CachedDistanceMap [][]float64             `json:"distance_map"`
+	CombineStrategy   CombineStrategy         `json:"combine_strategy"`
 }
 
-func NewCompressionModel(spliceOpts splicer.SpliceOptions, encodingType CompressionEncodingType) *CompressionModel {
-	return &CompressionModel{SpliceOptions: spliceOpts, EncodingType: encodingType}
+func NewCompressionModel(spliceOpts splicer.SpliceOptions, encodingType CompressionEncodingType, combineStrat CombineStrategy) *CompressionModel {
+	return &CompressionModel{
+		SpliceOptions:   spliceOpts,
+		EncodingType:    encodingType,
+		CombineStrategy: combineStrat,
+	}
 }
 
 func LoadCompressionModelFromFile(file string) (*CompressionModel, error) {
@@ -97,9 +123,15 @@ func (model *CompressionModel) AddMarketData(data []record.Market) error {
 	if err != nil {
 		return err
 	}
+	c, err := libdeflate.NewCompressorLevel(libdeflate.MaxCompressionLevel)
+	if err != nil {
+		return err
+	}
 	newItems := make([]CompressionItem, len(splices))
 	for i, s := range splices {
-		item, err := CompressSplice(s, model.EncodingType)
+		modelData := record.MarketToModel(s.Data)
+		item, err := CompressModelData(c, modelData, model.EncodingType)
+		item.Result = s.Result
 		if err != nil {
 			return err
 		}
@@ -109,21 +141,20 @@ func (model *CompressionModel) AddMarketData(data []record.Market) error {
 	return nil
 }
 
-func (model *CompressionModel) PredictResults(observation []record.Market, opts PredictionOpts) (int, error) {
+func (model *CompressionModel) PredictResults(observation record.Model, opts PredictionOpts) (int, error) {
 	results, err := model.GetClosestNeighbours(observation, opts.NearestN)
 	if err != nil {
 		return 0, err
 	}
-
 	// assuming item results are z-scores
 	// weighted result by distance
 	buyFreq := float64(0)
 	sellFreq := float64(0)
 	neitherFreq := float64(0)
 	for _, res := range results {
-		if res.Item.Splice.Result > 1 {
+		if res.Item.Result > 1 {
 			buyFreq += 1 / res.Distance
-		} else if res.Item.Splice.Result < 1 {
+		} else if res.Item.Result < 1 {
 			sellFreq += 1 / res.Distance
 		} else {
 			neitherFreq += 1 / res.Distance
@@ -140,24 +171,40 @@ func (model *CompressionModel) PredictResults(observation []record.Market, opts 
 }
 
 // GetClosestNeighbours expects data to come pre-normalised
-func (model *CompressionModel) GetClosestNeighbours(observation []record.Market, nearestN int) ([]*Neighbour, error) {
-	compressedObservation, err := CompressMarketData(observation, model.EncodingType)
+func (model *CompressionModel) GetClosestNeighbours(observation record.Model, nearestN int) ([]*Neighbour, error) {
+
+	c, err := libdeflate.NewCompressorLevel(libdeflate.MaxCompressionLevel)
 	if err != nil {
 		return nil, err
 	}
-	Cx1 := float64(len(compressedObservation))
+	defer c.Close()
+
+	compressedObservation, err := CompressModelData(c, observation, model.EncodingType)
+	if err != nil {
+		return nil, err
+	}
+	Cx1 := float64(compressedObservation.CompressedSize)
 	results := make([]*Neighbour, nearestN)
 	for _, item := range model.Items {
 		item := item
-		combined, err := record.CombineInterleaved(item.Splice.Data, observation)
+
+		var combined record.Model
+		switch model.CombineStrategy {
+		case InterleaveCombine:
+			interleaved, err := record.InterleaveModels(item.Data, observation)
+			if err != nil {
+				return nil, err
+			}
+			combined = *interleaved
+		case ConcatCombine:
+			combined = record.ConcatModels(item.Data, observation)
+		}
+
+		compressedCombined, err := GetCompressedLength(c, combined, model.EncodingType)
 		if err != nil {
 			return nil, err
 		}
-		compressedCombined, err := CompressMarketData(combined, model.EncodingType)
-		if err != nil {
-			return nil, err
-		}
-		Cx1x2 := float64(len(compressedCombined))
+		Cx1x2 := float64(compressedCombined)
 		Cx2 := float64(item.CompressedSize)
 		distance := (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2)
 
@@ -183,20 +230,27 @@ func (model *CompressionModel) GetClosestNeighbours(observation []record.Market,
 	return results, nil
 }
 
-func DistanceBetween(x1 CompressionItem, x2 CompressionItem, encodingType CompressionEncodingType) (float64, error) {
+func DistanceBetween(c libdeflate.Compressor, x1 CompressionItem, x2 CompressionItem, encodingType CompressionEncodingType, combineStrat CombineStrategy) (float64, error) {
 	Cx1 := float64(x1.CompressedSize)
 	Cx2 := float64(x2.CompressedSize)
 
-	combined, err := record.CombineInterleaved(x1.Splice.Data, x2.Splice.Data)
-	if err != nil {
-		return math.MaxFloat64, err
+	var combined record.Model
+	switch combineStrat {
+	case InterleaveCombine:
+		interleaved, err := record.InterleaveModels(x1.Data, x2.Data)
+		if err != nil {
+			return math.MaxFloat64, err
+		}
+		combined = *interleaved
+	case ConcatCombine:
+		combined = record.ConcatModels(x1.Data, x2.Data)
 	}
-	compressedCombined, err := CompressMarketData(combined, encodingType)
+	compressedCombined, err := GetCompressedLength(c, combined, encodingType)
 	if err != nil {
 		return math.MaxFloat64, err
 	}
 
-	Cx1x2 := float64(len(compressedCombined))
+	Cx1x2 := float64(compressedCombined)
 
 	return (Cx1x2 - math.Min(Cx1, Cx2)) / math.Max(Cx1, Cx2), nil
 }
@@ -213,7 +267,7 @@ func (model *CompressionModel) DistanceVarianceHistogram(bucketSize float64) (ma
 	for i, js := range distanceMap {
 		for j, dist := range js {
 			if i == j {
-				continue
+				//continue
 			}
 			destinationBucket := int(math.Floor(dist / bucketSize))
 			if destinationBucket > largestBucket {
@@ -222,7 +276,7 @@ func (model *CompressionModel) DistanceVarianceHistogram(bucketSize float64) (ma
 			if destinationBucket < smallestBucket {
 				smallestBucket = destinationBucket
 			}
-			resultBuckets[destinationBucket] = append(resultBuckets[destinationBucket], model.Items[i].Splice.Result)
+			resultBuckets[destinationBucket] = append(resultBuckets[destinationBucket], model.Items[i].Result)
 		}
 	}
 
@@ -269,9 +323,14 @@ func (model *CompressionModel) DistanceMap() ([][]float64, error) {
 		wg.Add(1)
 		go func(i int, itemI CompressionItem) {
 			defer wg.Done()
+			c, err := libdeflate.NewCompressor()
+			if err != nil {
+				panic(err)
+			}
+			defer c.Close()
 			for j, itemJ := range model.Items[i:] {
 				canonicalJ := j + i
-				distance, err := DistanceBetween(itemI, itemJ, model.EncodingType)
+				distance, err := DistanceBetween(c, itemI, itemJ, model.EncodingType, model.CombineStrategy)
 				if err != nil {
 					panic(err)
 				}
@@ -289,7 +348,7 @@ func (model *CompressionModel) SizeResultBuckets() map[int][]float64 {
 	buckets := make(map[int][]float64)
 	for _, item := range model.Items {
 		bucket := item.CompressedSize
-		buckets[bucket] = append(buckets[bucket], item.Splice.Result)
+		buckets[bucket] = append(buckets[bucket], item.Result)
 	}
 	return buckets
 }
@@ -310,18 +369,19 @@ func (model *CompressionModel) SaveToFile(file string) error {
 	return nil
 }
 
-func EncodeToCharVarLength(records []record.Market, field string) string {
-	convertFloat := func(f float64) string {
-		val := int(math.Floor(f * 1000))
+func EncodeToCharVarLength(b *strings.Builder, records []float64) {
+	convertFloat := func(f float64) {
+		val := int(math.Round(f * 100))
 		negative := false
 		if val < 0 {
 			negative = true
 			val = -val
 		}
 		if val == 0 {
-			return "0"
+			b.WriteRune('0')
+			return
 		}
-		resStr := make([]rune, val, val)
+		resStr := make([]byte, val, val)
 		if negative {
 			resStr[0] = 'N'
 		} else {
@@ -330,55 +390,68 @@ func EncodeToCharVarLength(records []record.Market, field string) string {
 		for i := 1; i < val; i *= 2 {
 			copy(resStr[i:], resStr[:i])
 		}
-		return string(resStr)
+		b.Grow(val)
+		b.Write(resStr)
 	}
-	var b strings.Builder
+
 	for _, rec := range records {
-		switch field {
-		case "open":
-			b.WriteString(convertFloat(rec.Open))
-		case "high":
-			b.WriteString(convertFloat(rec.High))
-		case "low":
-			b.WriteString(convertFloat(rec.Low))
-		case "close":
-			b.WriteString(convertFloat(rec.Close))
-		case "volume":
-			b.WriteString(convertFloat(rec.Volume))
-		case "vwap":
-			b.WriteString(convertFloat(rec.VWAP))
-		}
+		convertFloat(rec)
 		b.WriteRune(',')
 	}
-
-	return b.String()
 }
 
-func EncodeToSimpleString(records []record.Market, field string) string {
-	var b strings.Builder
-	for _, rec := range records {
-		switch field {
-		case "open":
-			b.WriteString(fmt.Sprintf("%.6f", rec.Open))
-		case "high":
-			b.WriteString(fmt.Sprintf("%.6f", rec.High))
-		case "low":
-			b.WriteString(fmt.Sprintf("%.6f", rec.Low))
-		case "close":
-			b.WriteString(fmt.Sprintf("%.6f", rec.Close))
-		case "volume":
-			b.WriteString(fmt.Sprintf("%.6f", rec.Volume))
-		case "vwap":
-			b.WriteString(fmt.Sprintf("%.6f", rec.VWAP))
+func EncodeToRomanNumerals(b *strings.Builder, records []float64) {
+	conversions := map[int]string{
+		1000: "M",
+		900:  "CM",
+		500:  "D",
+		400:  "CD",
+		100:  "C",
+		90:   "XC",
+		50:   "L",
+		40:   "XL",
+		10:   "X",
+		9:    "IX",
+		5:    "V",
+		4:    "IV",
+		1:    "I",
+	}
+	convertFloat := func(f float64) {
+		val := int(math.Round(f * 1000))
+		negative := false
+		if val < 0 {
+			negative = true
+			val = -val
+		}
+		if val == 0 {
+			b.WriteRune('0')
+			return
+		}
+		if negative {
+			b.WriteRune('-')
+		}
+		for romanVal, romanDigit := range conversions {
+			for val >= romanVal {
+				b.WriteString(romanDigit)
+				val -= romanVal
+			}
 		}
 	}
+	for _, rec := range records {
+		convertFloat(rec)
+		b.WriteRune(',')
+	}
+}
 
-	return b.String()
+func EncodeToSimpleString(b *strings.Builder, records []float64) {
+	for _, rec := range records {
+		b.WriteString(fmt.Sprintf("%.6f,", rec))
+	}
 }
 
 // EncodeToExpandedString repeats each digit in string by its value
 // e.g 1.2345 -> 1.22333444455555
-func EncodeToExpandedString(records []record.Market, field string) string {
+func EncodeToExpandedString(b *strings.Builder, records []float64) {
 	// happy to hear from anyone that has a less
 	// silly way of doing this
 	convertFloat := func(f float64) string {
@@ -396,32 +469,16 @@ func EncodeToExpandedString(records []record.Market, field string) string {
 		}
 		return string(newStr)
 	}
-	var b strings.Builder
 	for _, rec := range records {
-		switch field {
-		case "open":
-			b.WriteString(convertFloat(rec.Open))
-		case "high":
-			b.WriteString(convertFloat(rec.High))
-		case "low":
-			b.WriteString(convertFloat(rec.Low))
-		case "close":
-			b.WriteString(convertFloat(rec.Close))
-		case "volume":
-			b.WriteString(convertFloat(rec.Volume))
-		case "vwap":
-			b.WriteString(convertFloat(rec.VWAP))
-		}
+		b.WriteString(convertFloat(rec))
 		b.WriteRune(',')
 	}
-
-	return b.String()
 }
 
 // EncodeToSFExpandedString repeats each digit in string by its value,
 // count is reduced by number of preceding significant digits
 // e.g 3.4 -> 333.444
-func EncodeToSFExpandedString(records []record.Market, field string) string {
+func EncodeToSFExpandedString(b *strings.Builder, records []float64) {
 	convertFloat := func(f float64) string {
 		var newStr []rune
 		str := fmt.Sprintf("%.6f", f)
@@ -437,79 +494,76 @@ func EncodeToSFExpandedString(records []record.Market, field string) string {
 		}
 		return string(newStr)
 	}
-	var b strings.Builder
 	for _, rec := range records {
-		switch field {
-		case "open":
-			b.WriteString(convertFloat(rec.Open))
-		case "high":
-			b.WriteString(convertFloat(rec.High))
-		case "low":
-			b.WriteString(convertFloat(rec.Low))
-		case "close":
-			b.WriteString(convertFloat(rec.Close))
-		case "volume":
-			b.WriteString(convertFloat(rec.Volume))
-		case "vwap":
-			b.WriteString(convertFloat(rec.VWAP))
-		}
+		b.WriteString(convertFloat(rec))
 		b.WriteRune(',')
 	}
-
-	return b.String()
 }
 
-func CompressMarketData(data []record.Market, encodingType CompressionEncodingType) ([]byte, error) {
-	var buffBytes []byte
-	buff := bytes.NewBuffer(buffBytes)
-	writer := zlib.NewWriter(buff)
+type EncodingFunc func(*strings.Builder, []float64)
 
-	// not my proudest work :(
+func GetCompressedLength(c libdeflate.Compressor, data record.Model, encodingType CompressionEncodingType) (int, error) {
+	var encodingFunc EncodingFunc
 	switch encodingType {
 	case SimpleEncoding:
-		writer.Write([]byte(EncodeToSimpleString(data, "open")))
-		writer.Write([]byte(EncodeToSimpleString(data, "high")))
-		writer.Write([]byte(EncodeToSimpleString(data, "low")))
-		writer.Write([]byte(EncodeToSimpleString(data, "close")))
-		writer.Write([]byte(EncodeToSimpleString(data, "volume")))
-		writer.Write([]byte(EncodeToSimpleString(data, "vwap")))
+		encodingFunc = EncodeToSimpleString
 	case ExpandedEncoding:
-		writer.Write([]byte(EncodeToExpandedString(data, "open")))
-		writer.Write([]byte(EncodeToExpandedString(data, "high")))
-		writer.Write([]byte(EncodeToExpandedString(data, "low")))
-		writer.Write([]byte(EncodeToExpandedString(data, "close")))
-		writer.Write([]byte(EncodeToExpandedString(data, "volume")))
-		writer.Write([]byte(EncodeToExpandedString(data, "vwap")))
+		encodingFunc = EncodeToExpandedString
 	case SFExpandedEncoding:
-		writer.Write([]byte(EncodeToSFExpandedString(data, "open")))
-		writer.Write([]byte(EncodeToSFExpandedString(data, "high")))
-		writer.Write([]byte(EncodeToSFExpandedString(data, "low")))
-		writer.Write([]byte(EncodeToSFExpandedString(data, "close")))
-		writer.Write([]byte(EncodeToSFExpandedString(data, "volume")))
-		writer.Write([]byte(EncodeToSFExpandedString(data, "vwap")))
+		encodingFunc = EncodeToSFExpandedString
 	case CharVarLength:
-		writer.Write([]byte(EncodeToCharVarLength(data, "open")))
-		writer.Write([]byte(EncodeToCharVarLength(data, "high")))
-		writer.Write([]byte(EncodeToCharVarLength(data, "low")))
-		writer.Write([]byte(EncodeToCharVarLength(data, "close")))
-		writer.Write([]byte(EncodeToCharVarLength(data, "volume")))
-		writer.Write([]byte(EncodeToCharVarLength(data, "vwap")))
+		encodingFunc = EncodeToCharVarLength
+	case RomanEncoding:
+		encodingFunc = EncodeToRomanNumerals
 	}
 
-	err := writer.Flush()
-	if err != nil {
-		return nil, err
+	var b strings.Builder
+	calcSize := func(input []float64) (int, error) {
+		b.Reset()
+		encodingFunc(&b, input)
+		var compBuffer = make([]byte, b.Len(), b.Len())
+		size, _, err := c.Compress([]byte(b.String()), compBuffer, libdeflate.ModeGzip)
+		if err != nil {
+			return -1, err
+		}
+		return size, nil
 	}
-	return buff.Bytes(), nil
+
+	oSize, err := calcSize(data.Opens)
+	if err != nil {
+		return -1, err
+	}
+	hSize, err := calcSize(data.Highs)
+	if err != nil {
+		return -1, err
+	}
+	lSize, err := calcSize(data.Lows)
+	if err != nil {
+		return -1, err
+	}
+	cSize, err := calcSize(data.Closes)
+	if err != nil {
+		return -1, err
+	}
+	vSize, err := calcSize(data.Volumes)
+	if err != nil {
+		return -1, err
+	}
+	vwapSize, err := calcSize(data.VWAPs)
+	if err != nil {
+		return -1, err
+	}
+
+	return oSize + hSize + lSize + cSize + vSize + vwapSize, nil
 }
 
-func CompressSplice(s splicer.Splice, encodingType CompressionEncodingType) (*CompressionItem, error) {
-	compressed, err := CompressMarketData(s.Data, encodingType)
+func CompressModelData(c libdeflate.Compressor, m record.Model, encodingType CompressionEncodingType) (*CompressionItem, error) {
+	compressed, err := GetCompressedLength(c, m, encodingType)
 	if err != nil {
 		return nil, err
 	}
 	return &CompressionItem{
-		Splice:         s,
-		CompressedSize: len(compressed),
+		Data:           m,
+		CompressedSize: compressed,
 	}, nil
 }

@@ -165,16 +165,3 @@ func UnserialiseMarket(fields []string) (*Market, error) {
 		VWAP:      vwap,
 	}, nil
 }
-
-func CombineInterleaved(x1 []Market, x2 []Market) ([]Market, error) {
-	if len(x1) != len(x2) {
-		return nil, errors.New("cannot combine two unequal length sets")
-	}
-	length := len(x1) + len(x2)
-	res := make([]Market, length, length)
-	for i := 0; i < length; i += 2 {
-		res[i] = x1[i/2]
-		res[i+1] = x2[i/2]
-	}
-	return res, nil
-}
