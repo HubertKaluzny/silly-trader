@@ -10,10 +10,10 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*charts.HeatMap, error) {
+func CompressionHeatMap(m model.Model, downSampleBy int) (*charts.HeatMap, error) {
 	hmap := charts.NewHeatMap()
 
-	similarityMap, err := model.DistanceMap()
+	similarityMap, err := m.DistanceMap()
 	if err != nil {
 		return nil, err
 	}
@@ -85,12 +85,12 @@ func CompressionHeatMap(model *model.CompressionModel, downSampleBy int) (*chart
 	return hmap, nil
 }
 
-func CompressionDstVarHistogram(model *model.CompressionModel) (*charts.Bar, error) {
+func CompressionDstVarHistogram(m model.Model) (*charts.Bar, error) {
 	const bucketSize = float64(0.001)
 
 	bar := charts.NewBar()
 
-	buckets, err := model.DistanceVarianceHistogram(bucketSize)
+	buckets, err := model.DistanceVarianceHistogram(m, bucketSize)
 	if err != nil {
 		return nil, err
 	}
